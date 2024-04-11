@@ -15,12 +15,18 @@ The results from this paper can be explored here: https://vasconcelos.shinyapps.
 
 ## Directory
 The directory contains the following folders:
+
 objects - To store all objects needed/outputed; filetypes - .rds
+
 notebooks - To store all analysis notebooks; filetypes - .rmd
+
 scripts - To store all scripts; filetypes - .R
+
 figures - To store all figures generated; filetypes - .png, .svg
+
 results - To store all other results; filetypes - .xlsx, .csv
-utilities - To store utility objects/files
+
+utilities - To store utility objects/filetypes - .rds
 
 ## Download Files
 To run the analysis workflow download the files from https://figshare.com/account/articles/25583460 and place into the objects folder, except DESeq2, which goes to results folder
