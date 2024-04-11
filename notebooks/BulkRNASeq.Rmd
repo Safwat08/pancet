@@ -1,0 +1,217 @@
+---
+title: "Bulk RNA Seq Analysis"
+---
+## Load objects
+```{r}
+sig_genes <- readRDS('../objects/signature_genes.rds')
+deseq <- readxl::read_excel('../results/DESeq2.xlsx')
+object <- readRDS('../objects/jonsson_bulk.rds')
+
+
+meta <- object@meta.data %>%
+  mutate(anatomy = ifelse(anatomy == 'Endocrine', 'Islet', anatomy))
+object@meta.data <- meta
+
+```
+
+## Assess pancreas enriched EC signature gene module score 
+```{r}
+object <- AddModuleScore(object, features = list(sig_genes), name = 'sig_score')
+
+data <- FetchData(object, vars = c('sig_score1', 'anatomy', 'donor')) %>%
+  mutate(anatomy = ifelse(anatomy == 'islet', 'islet', anatomy))
+
+p <- ggboxplot(data, x = "anatomy", 
+          y = "sig_score1",
+         fill = "anatomy", 
+         line.color = "black", 
+         line.size = 0.4,
+         palette = c("#33A02CFF", 
+                     "#1F78B4FF")) + 
+  geom_point(aes(x = anatomy, 
+                 y = sig_score1,
+                color = donor), size =3) +
+  scale_color_brewer(palette = 'Dark2') +
+  stat_compare_means(comparisons = list(unique(data$anatomy)),
+                     method = 't.test', 
+                     paired = TRUE, 
+                     method.args = list(alternative = 'greater'),
+                     label = "p.signif", tip.length = 0.02) + 
+  theme_classic() +
+  theme( plot.title = element_blank(),
+         axis.title.x = element_blank(),
+         axis.title.y = element_text(size=8, face = "bold", colour = "black"),
+         axis.text.x = element_text(size =8, angle = 45, face = "bold", colour = "black", vjust = 0.5),
+         axis.text.y = element_text(size =8, face = "bold", colour = "black"),
+         legend.title = element_text(size=8, face = "bold", colour = "black", angle = 0),
+         legend.text = element_text(size=8, face = "bold", colour = "black"),
+         legend.title.align = 0.5) + 
+  labs(y = 'Pancreas EC enriched signature score')
+
+
+ggsave(p, filename = '../figures/bulk_RNAseq_data_signature_score.svg', width = 2.5, height = 3.5)
+```
+
+## PCA on only signature genes 
+```{r}
+
+sig_genes <- sig_genes
+
+object <- ScaleData(object, features = unique(sig_genes))
+
+object <- RunPCA(object, features = unique(sig_genes), npcs = 2, reduction.name = 'pca_sig')
+
+pca_df <- pca_cell <- object@reductions[['pca_sig']]@cell.embeddings %>%
+  as.data.frame %>%
+  cbind(FetchData(object, vars = 'anatomy'))
+
+p <- ggplot(pca_df, aes(x=PC_1, y=PC_2, shape=anatomy, color=anatomy)) +
+  geom_point(size = 2) + 
+  scale_color_manual(values = c("#33A02CFF", "#1F78B4FF"), name = "Anatomy") + 
+  theme_classic() +
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+      axis.title=element_text(size = 8, face = "bold"),
+      axis.text = element_text(size = 8, face = "bold"),
+      legend.title = element_text(size=8, face = "bold"),
+      legend.text = element_text(size=8, vjust = 1, hjust = 1, face = "bold"))
+
+ggsave(p, filename = '../figures/bulk_signature_genes_pca_plot.svg', 
+       width = 5, height = 1.5)
+```
+
+
+## PC1 heat map
+```{r}
+pca_cell <- object@reductions[['pca_sig']]@cell.embeddings %>%
+  as.data.frame %>%
+  arrange(PC_1) %>%
+  rownames()
+
+pca_feature  <- object@reductions[['pca_sig']]@feature.loadings %>%
+  as.data.frame %>%
+  arrange(PC_1) %>%
+  rownames()
+
+data <- GetAssayData(object, assay = 'RNA', slot = 'data') %>%
+  as.data.frame()
+
+meta_data <- object@meta.data
+
+data_map <- data[pca_feature, pca_cell]
+
+p_h <- ggheatmap(
+  data_map,
+  showticklabels = c(F,T), 
+  show_dendrogram = c(F, F),
+  scale = 'row', 
+  Rowv = F, 
+  Colv = F,
+  colors = rev(RdYlBu(100))
+)
+
+ggsave(p_h, filename = '../figures/bulk_PC1_heatmap.svg', 
+       width = 6, height = 2.5)
+
+ggsave(p_h, filename = '../figures/bulk_PC1_heatmap.png', 
+       width = 2.5, height = 6)
+
+
+data <- FetchData(object, vars = signature_genes, slot = 'scale.data')
+
+data <- p$data %>% 
+  select(-avg.exp, -pct.exp)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+# PC1 plot
+df  <- object@reductions[['pca_sig']]@feature.loadings %>%
+  as.data.frame(.) %>%
+  mutate(genes = rownames(.),
+         label = ifelse(rank(PC_1) <= 20 | rank(-PC_1) <= 20 , genes, NA),
+         x = 'x') %>%
+  arrange(PC_1) %>%
+  select(genes, PC_1, label, x)
+
+p <- ggplot(df, aes(x=x, y=PC_1, label = label)) +
+    geom_point(size = 1, color = 'darkred') + 
+geom_label_repel(
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 1,
+                   segment.size = 0.5,
+                 segment.color = "red",
+                   size =2.7) +
+  theme_classic() +  
+  labs( x = "Signature Genes",
+        y = "PC 1") + 
+  theme(axis.text.y =element_text(size=8, face = 'bold'),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none') 
+
+ggsave(plot = p, filename = '../figures/tabulamuris_ecatlas_signature_genes_vpcafeatures_pc1.svg', width = 2.5, height = 8)
+```
+
+## DESeq2 genes
+
+```{r}
+deseq$...1 <- updateGenes(deseq$...1, db = hgnc)
+
+genes3 <- c(sig_genes, c('SDPR', "CAVIN2", "FABP5", "CD74", "ITM2A", "B2M", "HLA-C", "HLA-B", "SPARC", "SPARCL1", "IGFBP7", "SLCO2A1", "CD320", "SLC2A3", "AKAP12", "PIEZO2", "NEURL1B", "HEG1", "SOX7", "INSR"))
+
+genes2 <- c("SPARC", "NKX2-3", "COL4A1", "IGFBP3", "PCDH17", "NEURL1B")
+
+genes <- setdiff(genes3, genes2)
+
+deseq_xl <- deseq %>%
+  rename_all(~ c("Gene", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"))
+
+writexl::write_xlsx(deseq_xl, path = '../results/Table-S10.xlsx')
+
+deseq_genes <- deseq %>%
+  rename(features = 1) %>%
+  filter(features %in% genes &
+           padj < 0.05) %>%
+  arrange(log2FoldChange) %>%
+  pull(features)
+
+
+data <- FetchData(object, vars = c(deseq_genes, "anatomy")) #%>% rename(NKX2.3 = !!sym("NKX2-3"))
+
+deseq_genes <- colnames(data)
+deseq_genes <- deseq_genes[-length(deseq_genes)]
+  
+
+plot_list <- list() 
+
+for (i in 1:length(deseq_genes)) {
+  
+  plot_list[[i]] <- ggboxplot(data, x = "anatomy", 
+          y = deseq_genes[i],
+         fill = "anatomy",
+         palette = c("#33A02CFF", 
+                     "#1F78B4FF")) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+         axis.title.x = element_blank(),
+         axis.title.y = element_text(size=8, face = "bold", colour = "black"),
+         axis.text.x = element_text(size =8, angle = 45, face = "bold", colour = "black", vjust = 1, hjust = 1),
+         axis.text.y = element_text(size =8, face = "bold", colour = "black"),
+         legend.position = 'none') + 
+  labs(y = deseq_genes[i])
+  
+}
+
+gridrow <- ceiling(length(deseq_genes)/6)
+
+grid <- plot_grid(plotlist = plot_list, nrow = gridrow, ncol = 6)
+
+ggsave(grid, filename = '../figures/bulk_RNAseq_data_individual_gene4_score.svg', width = 2.5*3, height = (4.8))
+  
+  
+```

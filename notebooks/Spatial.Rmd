@@ -1,0 +1,441 @@
+---
+title: "Spatial Analysis"
+---
+
+## Load objects 
+```{r}
+# Integrated Atlas
+int_atlas <- readRDS('../objects/integrated_atlas.rds')
+
+# Pancreas Datasets
+panc_fetal <- readRDS('../objects/descartes_pancreas.rds')
+panc_adult <- readRDS('../objects/tostiadult_pancreas_subset.rds')
+DefaultAssay(panc_adult) <- 'LOG'
+
+# Integrated Atlas DE analysis
+int_atlas_de <- readRDS('../objects/integrated_atlas_mast_de.rds')
+
+# List of individual olaniru spatial objects
+object_list <- readRDS('../objects/olaniru_spatial_objects.rds')
+
+# Expanded signature genes
+sig_genes_exp <- readRDS('../objects/signature_genes_expanded.rds')
+```
+
+## Vascular Bed Signatures
+```{r}
+# Integrated Atlas DE Analysis
+int_atlas_de <- readRDS('../objects/integrated_atlas_mast_de.rds') %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "Arteriole-Precapillary",
+    cluster == "Artery 1" ~ "Artery-Large",
+    cluster == "Artery 2" ~ "Arteriole-Feeding",
+    cluster == "Capillary 1" ~ "Capillary-Islet",
+    cluster == "Capillary 2" ~ "Capillary-Exocrine",
+    cluster == "Venule" ~ "Venule-Postcapillary"))
+
+# Expanded signature genes
+sig_genes_exp <- readRDS('../objects/signature_genes_expanded.rds')
+
+# Signature genes for each vascular subpopulation
+int_atlas_de_filt <- int_atlas_de %>%
+  mutate(feature = gene,
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval) %>%
+  filter(p_val_adj < 0.05 &
+           avg_log2FC > 0.5 & 
+           feature %in% sig_genes_exp) %>%
+    group_by(feature) %>% 
+slice_max(order_by = avg_log2FC, n = 1) %>% # remove duplicates by keeping the gene for the cluster with the highest log2FC for that gene
+  ungroup()
+
+# Get list for each subpopulation 
+marker_list <- int_atlas_de_filt %>%
+  group_by(cluster) %>%
+  dplyr::summarise(Markers = list(feature)) %>%
+  pull(Markers)
+
+#marker_list <- int_atlas_de_filt %>%
+ # group_by(cluster) %>%
+  #slice_max(order_by = avg_log2FC, n = 20)%>%
+  #dplyr::summarise(Markers = list(feature)) %>%
+  #pull(Markers)
+
+marker_list <- marker_list[-3]
+
+marker_list <- marker_list[c(1,2,4,3,5)]
+
+names(marker_list) <- c("ArterioleFeeding", "ArteriolePrecapillary","CapillaryIslet", "CapillaryExocrine", "VenulePostcapillary")
+
+
+# Signature genes for each vascular subpopulation
+cap_markers <- readRDS('../objects/integrated_atlas_capillary_subset_analysis_mast_de.rds') %>%
+    mutate(feature = gene,
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval) %>%
+  filter(p_val_adj < 0.05 &
+           avg_log2FC > 0.25 &
+           feature %in% sig_genes_exp) %>% 
+  group_by(feature) %>% 
+slice_max(order_by = avg_log2FC, n = 1) %>% # remove duplicates by keeping the gene for the cluster with the highest log2FC for that gene
+  ungroup()
+
+marker_list_cap <- cap_markers %>%
+  group_by(cluster) %>%
+  dplyr::summarise(Markers = list(gene)) %>%
+  pull(Markers)
+
+names(marker_list_cap) <- c("CapillaryIslet", "CapillaryExocrine")
+
+marker_list$CapillaryExocrine <- intersect(marker_list$CapillaryExocrine, marker_list_cap$CapillaryExocrine)
+
+marker_list$CapillaryIslet <- intersect(marker_list$CapillaryIslet, marker_list_cap$CapillaryIslet)
+
+# Score names 
+score_names <- paste0(names(marker_list), "_score")
+
+# Score names in metadata, AddModuleScore adds a 1
+score_names_meta <- paste0(score_names, "1")
+
+# Remove COL4A1 and MCAM
+marker_list$ArteriolePrecapillary <- setdiff(marker_list$ArteriolePrecapillary, c("MCAM", "COL4A1"))
+```
+
+## Assessment of signature genes in integratd atlas and pancreas datasets 
+```{r}
+# Load Data
+# Integrated Atlas
+int_atlas <- readRDS('../objects/integrated_atlas.rds')
+
+meta <- int_atlas@meta.data %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "ArteriolePrecapillary",
+    cluster == "Artery 1" ~ "ArteryLarge",
+    cluster == "Artery 2" ~ "ArterioleFeeding",
+    cluster == "Capillary 1" ~ "CapillaryIslet",
+    cluster == "Capillary 2" ~ "CapillaryExocrine",
+    cluster == "Venule" ~ "VenulePostcapillary"))
+
+int_atlas@meta.data <- meta
+
+
+# For tabm
+object_genes <- rownames(tabm)
+species <- 'mouse'
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+
+# Add subpopulation signature score to integrated atlas and pancreas datasets 
+for (i in 1:length(marker_list)) {
+  
+    int_atlas <- AddModuleScore(int_atlas, features = list(marker_list[[i]]), name = score_names[i], assay = 'LOG')
+    
+    panc_adult <- AddModuleScore(panc_adult, features = list(marker_list[[i]]), name = score_names[i], assay = 'LOG')
+    
+    panc_fetal <- AddModuleScore(panc_fetal, features = list(marker_list[[i]]), name = score_names[i], assay = 'LOG')
+    
+}
+
+# Dot plots to assess score specificity 
+
+# Set order
+int_atlas <- SetIdent(int_atlas, value = 'cluster')
+
+int_atlas@active.ident <- factor(int_atlas@active.ident, levels = c("ArteryLarge", "ArterioleFeeding","ArteriolePrecapillary", "CapillaryIslet", "CapillaryExocrine","VenulePostcapillary"))
+
+p_int <- DotPlot(int_atlas, 
+                 features = score_names_meta) +
+  scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0) +
+  theme(axis.text.x = element_text(size =8, angle = 90, face = "bold", colour = "black", hjust = 1),axis.title.x = element_blank(),
+         axis.title.y = element_blank(),
+         axis.text.y = element_text(size =8, face = "bold", colour = "black"),
+         legend.title = element_text(size=8, face = "bold", colour = "black", angle = 0),
+         legend.text = element_text(size=8, face = "bold", colour = "black"),
+         legend.title.align = 0.5,        
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(color = guide_colorbar(title="Avg. Exp.", order = 2),
+         size = guide_legend(title="% Exp.", order = 1)) + 
+  scale_x_discrete(labels=c("ArterioleFeeding_score1" = "Arteriole-Feeding Score", 
+                            "ArteriolePrecapillary_score1" = "Arteriole-Precapillary Score",
+                            "CapillaryIslet_score1" = "Capillary-Islet Score", 
+                            "CapillaryExocrine_score1" = "Capillary-Exocrine Score", 
+                            "VenulePostcapillary_score1" = "Venule-Postcapillary Score"))
+
+
+# Save only p_int
+ggsave(p_int, filename = '../figures/vascular_subpopulation_scores_integrated_atlas.svg', width = 4, height = 4)
+
+ggsave(p_int, filename = '../figures/vascular_subpopulation_scores_integrated_atlas.png', width = 7, height = 6)
+
+
+
+p_adult <- DotPlot(panc_adult, features = score_names_meta) +
+  scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0) +
+  theme(axis.text.x = element_text(size =8, angle = 90, face = "bold", colour = "black", hjust = 1),axis.title.x = element_blank(),
+         axis.title.y = element_blank(),
+         axis.text.y = element_text(size =8, face = "bold", colour = "black"),
+         legend.title = element_text(size=8, face = "bold", colour = "black", angle = 0),
+         legend.text = element_text(size=8, face = "bold", colour = "black"),
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(color = guide_colorbar(title="Avg. Exp.", order = 2),
+         size = guide_legend(title="% Exp.", order = 1)) + 
+  scale_x_discrete(labels=c("ArterioleFeeding_score1" = "Arteriole-Feeding Score", 
+                            "ArteriolePrecapillary_score1" = "Arteriole-Precapillary Score", 
+                            "CapillaryIslet_score1" = "Capillary-Islet Score", 
+                            "CapillaryExocrine_score1" = "Capillary-Exocrine Score", 
+                            "VenulePostcapillary_score1" = "Venule-Postcapillary Score"))
+
+ggsave(p_adult, filename = '../figures/vascular_subpopulation_scores_adult_pancreas_atlas.svg', width = 4, height = 4)
+
+
+p_fetal <- DotPlot(panc_fetal, features = score_names_meta) +
+  scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0)  +
+  theme(axis.text.x = element_text(size =8, angle = 90, face = "bold", colour = "black", hjust = 1),axis.title.x = element_blank(),
+         axis.title.y = element_blank(),
+         axis.text.y = element_text(size =8, face = "bold", colour = "black"),
+         legend.title = element_text(size=8, face = "bold", colour = "black", angle = 0),
+         legend.text = element_text(size=8, face = "bold", colour = "black"),
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(color = guide_colorbar(title="Avg. Exp.", order = 2),
+         size = guide_legend(title="% Exp.", order = 1)) + 
+  scale_x_discrete(labels=c("ArterioleFeeding_score1" = "Arteriole-Feeding Score", 
+                            "ArteriolePrecapillary_score1" = "Arteriole-Precapillary Score", 
+                            "CapillaryIslet_score1" = "Capillary-Islet Score", 
+                            "CapillaryExocrine_score1" = "Capillary-Exocrine Score", 
+                            "VenulePostcapillary_score1" = "Venule-Postcapillary Score"))
+
+ggsave(p_fetal, filename = '../figures/vascular_subpopulation_scores_fetal_pancreas_atlas.svg', width = 4, height = 4)
+```
+
+## Assess distinction of exocrine and endocrine regions
+```{r}
+pal <- pal_lancet()(6)
+
+names <- c("PCW18_1", "PCW18_2", "PCW20_1", "PCW20_2")
+
+for (i in 1:length(object_list_sub)) {
+  
+  p <- doScatterpie(object_list_sub[[i]],
+             features = c("islet", "exocrine", "endothelial", "mesenchymal", "immune", 'Schwann'),
+             default_col = F,
+             filter = F, 
+             subset = F, 
+             filter_val = 0, 
+             cols = pal)
+
+  filename_png <- paste0('../figures/scatterpie_', names[i], '_all.png')
+  
+  ggsave(p, filename = filename_png, width = 7, height = 10)
+  
+  ggsave(p, filename = filename_svg, width = 7, height = 10)
+  
+  
+}
+
+grid <- plot_grid(plotlist = plot_list, nrow = 1, ncol = 4)
+  
+  
+  
+for (i in 1:length(object_list)) {
+  
+  object_list[[i]]@meta.data$islet <- object_list[[i]]@meta.data$endocrine
+  
+}
+
+p_list <- lapply(object_list, 
+                   doCorrPlot,  
+                   features = c("INS", "CLPS", "islet", "exocrine"), test = 'spearman')
+
+grid <- plot_grid(plotlist = p_list, nrow = 3, ncol = 3)
+
+ggsave(grid, filename = '../figures/correlation_exocrine_endocrine_spatial_datasets.svg', width = 8, height = 6)
+
+ggsave(grid, filename = '../figures/correlation_exocrine_endocrine_spatial_datasets.png', width = 12, height = 8)
+```
+
+
+## Spatial Scatterpieplots + Feature Plots
+```{r}
+# Subset only PCW 18 - 20
+object_list_sub <- object_list[4:7]
+
+for (j in 1:length(object_list_sub)) {
+  
+  object <- object_list_sub[[j]]
+  
+  for (i in 1:length(marker_list)) {
+    
+    object <- AddModuleScore(object, features = list(marker_list[[i]]), name = score_names[i], assay = 'SCT')
+    
+  }
+  
+  object_list_sub[[j]] <- object
+}
+
+
+# Add "Islet" 
+for (i in 1:length(object_list_sub)) {
+  
+  object_list_sub[[i]]@meta.data$islet <- object_list_sub[[i]]@meta.data$endocrine
+  
+}
+
+
+pal <- c("#FF00FF","#6600FF", "#030637", "#030637")
+
+p_pcw20_2 <- doScatterpie(object_list_sub[[3]],
+             features = c("islet", "exocrine", "endothelial", "other"),
+             default_col = F,
+             filter = F, 
+             subset = F, 
+             filter_val = 0, 
+             cols = pal)
+
+ggsave(p_pcw20_2, filename = '../figures/scatterpie_PCW20_2.png', width = 7, height = 10)
+
+# Set region_exclusion
+for (j in 1:length(object_list_sub)) {
+  
+  obj <- object_list_sub[[j]]
+  
+  obj@meta.data$region_exclusion <- "other"
+  
+  ind_exo <- which(obj@meta.data$islet == 0 & obj@meta.data$exocrine > 0.1)
+  
+  ind_endo <- which(obj@meta.data$exocrine == 0 & obj@meta.data$islet > 0.1)
+  
+  obj@meta.data$region_exclusion[ind_exo] <- 'exocrine'
+  
+  obj@meta.data$region_exclusion[ind_endo] <- 'islet'
+  
+  object_list_sub[[j]] <- obj
+
+}
+
+
+pcw20 <- SetIdent(object_list_sub[[3]], value = 'region_exclusion')
+
+pcw20 <- subset(pcw20, idents = c("islet", "exocrine"))
+
+pal <- c("#6600FF", "#FF00FF", "#030637", "#030637")
+
+p_pcw20 <- doScatterpie(pcw20,
+             features = c("islet", "exocrine", "endothelial", "other"),
+             default_col = F,
+             filter = F, 
+             subset = F, 
+             subset_meta = 'region_exclusion',
+             subset_ident = 'islet',
+             filter_val = 0, 
+             cols = pal) + theme(legend.position = 'none')
+
+ggsave(p_pcw20, filename = '../figures/scatterpie.png', width = 3, height = 5)
+
+p_pcw20_both <- doSpatialFeaturePlot(pcw20, feature = 'region_exclusion',
+                     subset = F, scale = 'manual', cols = pal) + theme(legend.position = 'none')
+
+ggsave(p_pcw20_both, filename = '../figures/score_panel_both.png', width = 3, height = 5)
+
+data <- pcw20@meta.data[,c("CapillaryIslet_score1")]
+
+mx <- max(data)
+
+mn <- min(data)
+
+
+p_pcw20_cap1_sig_islet <- doSpatialFeaturePlot(pcw20, feature = 'CapillaryIslet_score1',
+                     subset = T, subset_meta = 'region_exclusion', subset_ident = 'islet', min_val = mn, max_val = mx, scale = 'gradient')
+
+p_pcw20_cap1_sig_exo <- doSpatialFeaturePlot(pcw20, feature = 'CapillaryIslet_score1',
+                     subset = T, subset_meta = 'region_exclusion', subset_ident = 'exocrine', min_val = mn, max_val = mx, scale = 'gradient')
+
+
+
+data <- pcw20@meta.data[,c("CapillaryExocrine_score1")]
+
+mx <- max(data)
+
+mn <- min(data)
+
+
+p_pcw20_cap2_sig_islet <- doSpatialFeaturePlot(pcw20, feature = 'CapillaryExocrine_score1',
+                     subset = T, subset_meta = 'region_exclusion', subset_ident = 'islet', min_val = mn, max_val = mx, scale = 'gradient')
+
+p_pcw20_cap2_sig_exo <- doSpatialFeaturePlot(pcw20, feature = 'CapillaryExocrine_score1',
+                     subset = T, subset_meta = 'region_exclusion', subset_ident = 'exocrine', min_val = mn, max_val = mx, scale = 'gradient')
+
+ggsave(p_pcw20_cap1_sig_islet, filename = '../figures/score_panel_cap1islet.png', width = 3, height = 5)
+
+ggsave(p_pcw20_cap2_sig_islet, filename = '../figures/score_panel_cap2islet.png', width = 3, height = 5)
+
+ggsave(p_pcw20_cap1_sig_exo, filename = '../figures/score_panel_cap1exo.png', width = 3, height = 5)
+
+ggsave(p_pcw20_cap2_sig_exo, filename = '../figures/score_panel_cap2exo.png', width = 3, height = 5)
+
+ggsave(p_pcw20_cap1_sig_islet, filename = '../figures/score_panel_cap1islet.svg', width = 3, height = 5)
+
+ggsave(p_pcw20_cap2_sig_islet, filename = '../figures/score_panel_cap2islet.svg', width = 3, height = 5)
+
+ggsave(p_pcw20_cap1_sig_exo, filename = '../figures/score_panel_cap1exo.svg', width = 3, height = 5)
+
+ggsave(p_pcw20_cap2_sig_exo, filename = '../figures/score_panel_cap2exo.svg', width = 3, height = 5)
+```
+
+## Spearman correlations
+```{r}
+# Spearman Corrrelation Box Plots
+p_box <- diffCorrPlot_n(list = object_list_sub,
+               features = score_names_meta,
+               ident.1 = 'islet',
+               ident.2 = 'exocrine',
+               assay = 'SCT',
+               slot = 'data',
+               stat = 'spearman',
+               plot = 'box',
+               custom_group = F,
+               group_var = "")[[2]]
+
+ggsave(p_box, filename = '../figures/correlation_scores_exocrine_endocrine_spatial_datasets.svg', width = 4, height = 4)
+
+ggsave(p_box, filename = '../figures/correlation_scores_exocrine_endocrine_spatial_datasets.png', width = 8, height = 7)
+
+
+# Fisher Z  Box Plots
+p_bar_result <- diffCorrPlot_n(list = object_list_sub,
+               features = score_names_meta,
+               ident.1 = 'endocrine',
+               ident.2 = 'exocrine',
+               assay = 'SCT',
+               slot = 'data',
+               stat = 'spearman',
+               plot = 'bar',
+               custom_group = F,
+               group_var = "")
+
+ggsave(p_bar_result[[2]], filename = '../figures/fisherZ_signaturescores.svg', width = 2, height = 3.5)
+```
+

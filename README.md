@@ -8,6 +8,9 @@ Uncovering the transcriptomic heterogeneity of pancreatic endothelial cells usin
 
 Khan, S.T., et al. bioRxiv, 2023
 
+# ShinyApp
+The results from this paper can be explored here: https://vasconcelos.shinyapps.io/pancreatic_endothelial/
+
 # Description
 
 ## Directory
@@ -19,19 +22,8 @@ figures - To store all figures generated; filetypes - .png, .svg
 results - To store all other results; filetypes - .xlsx, .csv
 utilities - To store utility objects/files
 
-## Scripts
-Pancreas_EC_enriched_signature - Get pancreas EC enriched signature genes
-TabulaSapiens_Validation - Validation of pancreas EC enriched signature and Integrated Atlas populations
-
-
-
 ## Download Files
-To run the analysis workflow download the files from https://figshare.com/account/articles/25583460 and place into the objects folder
+To run the analysis workflow download the files from https://figshare.com/account/articles/25583460 and place into the objects folder, except DESeq2, which goes to results folder
 
-## Work through the scripts in the following order
-1. Pancreas_EC_enriched_signature.Rmd
-
-## Notes
-* tosti_adult_subset is a subset of the tosti adult rds the full 
 
 

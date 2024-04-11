@@ -1,0 +1,182 @@
+---
+title: "Gene Set Enrichment Analysis"
+---
+
+## Initiate
+```{r}
+# Source utilities
+source('../scripts/utilities.R')
+```
+
+## Load data
+```{r}
+signature_genes <- readRDS('../objects/signature_genes.rds')
+```
+
+## Enrichr
+```{r}
+genes <- signature_genes
+
+dbs <- listEnrichrDbs()
+
+all_dbs <- dbs$libraryName
+
+dbs_pathway <- c("WikiPathway_2023_Human", "Reactome_2022", "KEGG_2021_Human", "BioPlanet_2019", "Panther_2016", "BioCarta_2016")
+
+enriched_sig <- enrichr(genes, dbs_pathway)
+
+for (i in 1:length(enriched_sig)) {
+  
+  enriched_sig[[i]]$Database <- names(enriched_sig[i])
+  
+}
+
+
+enriched_sig <- Reduce(rbind, enriched_sig) %>%
+  mutate(intersection_size = as.numeric(str_split_fixed(Overlap, "/", 2)[,1])) %>% 
+  mutate(term_size = as.numeric(str_split_fixed(Overlap, "/", 2)[,2])) %>%
+  mutate(gene_ratio = intersection_size / term_size) %>%
+  filter(intersection_size > 1) %>%
+  filter(Adjusted.P.value < 0.05) %>%
+  arrange(Adjusted.P.value)
+
+write.csv(enriched_sig, file = '../results/Enrichr_Pathways_signature_genes.csv')
+
+writexl::write_xlsx(enriched_sig, path = '../results/Table-S8.xlsx')
+
+data <- read.csv('../results/Enrichr_Pathways_signature_genes.csv', stringsAsFactors = F)
+
+terms <- data$Term
+
+library(reticulate)
+# use_python('/opt/anaconda3/bin/python3')
+# py_config()
+library(fuzzywuzzyR)
+
+init = FuzzMatcher$new() 
+
+ratio_mat <- matrix(ncol = length(terms),
+                    nrow = length(terms))
+
+colnames(ratio_mat) <- terms
+rownames(ratio_mat) <- terms
+
+for (i in 1:length(terms)) {
+  
+  ratios <- sapply(terms, init$Partial_token_sort_ratio, terms[i], USE.NAMES = F)
+  
+  ratio_mat[i,] <- ratios
+  
+  
+}
+
+ratio_mat[ratio_mat < 70] <- 0
+ratio_mat[ratio_mat > 70] <- 1
+
+ratio_mat_df <- as.data.frame(ratio_mat) %>%
+  setNames(make.names(names(.), unique = TRUE)) %>%
+  mutate(order = 1:nrow(ratio_mat)) %>%
+  arrange(across(everything(), desc))
+
+data <- data[ratio_mat_df$order,]
+
+write.csv(data, file = '../results/Enrichr_Pathways_signature_genes.csv')
+# Modify with excel save as enrichr_pathways_signature_genes_truncated_modified.csv
+```
+
+## Network
+```{r}
+library(dplyr)
+
+enrichr <- read.csv('../results/Enrichr_Pathways_signature_genes_modified.csv')
+
+enrichr <- enrichr %>% 
+  as.data.frame() %>% 
+  mutate_all(~ifelse(. == "", NA, .)) %>%
+  mutate(Negative.Log.P.Value = -log10(Adjusted.P.value))
+
+
+enrichr_longer <- pivot_longer(as.data.frame(enrichr), cols = starts_with("Genes"), values_to = 'Genes', values_drop_na = T)
+
+# Extract fill colors
+
+p <- ggplot(enrichr_longer, aes("A", 
+                                factor(Term, levels = rev(unique(Term))), 
+                                fill = Negative.Log.P.Value)) +
+  geom_tile(lwd = 0.5, linetype = 1, color = 'black') + 
+  scale_fill_viridis_c(option = 'viridis', begin = 0.5, end = 1)
+
+ggsave(p, filename = '../figures_publish2/network_legend.svg')
+
+
+fill_colors <- ggplot_build(p)$data[[1]]$fill
+
+df <- enrichr_longer %>%
+  rename(from = Term, 
+         to = Genes) %>%
+  mutate(type = 'term',
+         color = fill_colors,
+         shape = "box") %>%
+  select(from, to, type, color, shape)
+
+
+
+df_alt <- df %>%
+  rename(from = to, to = from) %>%
+  mutate(type = 'gene',
+         color = 'dodgerblue',
+         shape = "ellipse") %>%
+  arrange(from)
+
+nodes <- rbind(df, df_alt) %>%
+  distinct(from, .keep_all = T) %>%
+  rename(id = from) %>%
+  mutate(label = id) %>%
+  select(id, label, color, type, shape)
+
+edges <- df %>%
+  select(from, to)
+
+
+# create the network object
+network <- graph_from_data_frame(d=edges, vertices=nodes, directed=F) 
+
+# Create custom layout
+# layout2=layout_as_tree(network)
+
+#layout=layout_as_tree(network)
+
+#layout[,1] <- layout2[,2]
+#layout[,2] <- layout2[,1]
+
+#row2 <- which(layout[,1] == 1)
+#row3 <- which(layout[,1] == 2)
+#row4 <-  which(layout[,1] == 3)
+#row5 <- which(layout[,1] == 4)
+
+#layout[,1][row2] <- 1.05
+#layout[,1][row3] <- 2
+#layout[,1][row4] <- 2.7
+#layout[,1][row5] <- 2
+
+#vis_network <- visIgraph(network, layout = 'layout.norm', layoutMatrix = layout) %>%
+    #visEdges(width = 6) %>%
+  #visNodes(
+   # label = nodes$label,  # Specify the label column
+    #color = nodes$color,  # Specify the color column
+    #size = nodes$size,     # Specify the size column
+    #shape = nodes$shape,
+    #font = list(color = 'black',
+    #            size = 40)
+  #)
+
+vis_network <- visIgraph(network, layout = 'layout_with_dh') %>%
+    visEdges(width = 4) %>%
+  visNodes(
+    label = nodes$label,  # Specify the label column
+    color = nodes$color,  # Specify the color column
+    shape = nodes$shape,
+    font = list(color = 'black',
+                size = 30)
+  )
+```

@@ -1,0 +1,548 @@
+---
+title: "Integrated Atlas Analysis"
+---
+## Initiate
+```{r}
+# Source utilities
+source('../scripts/utilities.R')
+```
+
+## Load data
+```{r}
+## Integrated Atlas
+integrated_atlas <- readRDS('../objects/integrated_atlas.rds')
+signature_genes <- readRDS('../objects/signature_genes.rds')
+```
+
+## Integrated atlas DE
+```{r}
+integrated_atlas_de <- FindAllMarkers(integrated_atlas, only.pos = T, test.use = 'MAST')
+# Save Excel
+integerated_atlas_de_xl <- integerated_atlas_de %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "Arteriole-Precapillary",
+    cluster == "Artery 1" ~ "Artery-Large",
+    cluster == "Artery 2" ~ "Arteriole-Feeding",
+    cluster == "Capillary 1" ~ "Capillary-Islet",
+    cluster == "Capillary 2" ~ "Capillary-Exocrine",
+    cluster == "Venule" ~ "Venule-Postcapillary")) %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in Cluster", "% Expression in other cells", "Bonferroni-adjusted P value", "Cluster", "Gene"))
+
+saveRDS(integrated_atlas_de, file = '../objects/integrated_atlas_mast_de.rds')
+
+writexl::write_xlsx(integerated_atlas_de_xl, path = '../results/Table-S9.xlsx')
+
+integrated_atlas_cap <- subset(integrated_atlas, idents = c('Capillary 1', 'Capillary 2'))
+integrated_atlas_cap <- NormalizeData(integrated_atlas_cap)
+cap_atlas_de <- FindAllMarkers(integrated_atlas_cap, only.pos = T, test.use = 'MAST')
+
+saveRDS(cap_atlas_de, file = '../objects/integrated_atlas_capillary_subset_analysis_mast_de.rds')
+```
+
+## UMAP and stacked bar plot
+```{r}
+# Load Data
+# Integrated Atlas
+int_atlas <-integrated_atlas
+sig_genes <- signature_genes
+
+meta <- int_atlas@meta.data %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "ArteriolePrecapillary",
+    cluster == "Artery 1" ~ "ArteryLarge",
+    cluster == "Artery 2" ~ "ArterioleFeeding",
+    cluster == "Capillary 1" ~ "CapillaryIslet",
+    cluster == "Capillary 2" ~ "CapillaryExocrine",
+    cluster == "Venule" ~ "VenulePostcapillary"))
+
+int_atlas@meta.data <- meta
+
+# Set order
+int_atlas <- SetIdent(int_atlas, value = 'cluster')
+
+int_atlas@active.ident <- factor(int_atlas@active.ident, levels = c("ArteryLarge", "ArterioleFeeding","ArteriolePrecapillary","CapillaryExocrine", "CapillaryIslet", "VenulePostcapillary"))
+
+# Custom color scheme
+color.scheme <- c("ArteryLarge" = "#FB9A99FF", "ArterioleFeeding" = "#E31A1CFF", "ArteriolePrecapillary" = "#FF7F00FF", "CapillaryIslet" = "#33A02CFF", "CapillaryExocrine" = "#1F78B4FF", "VenulePostcapillary" = "#6A3D9AFF")
+
+my_levels <- c("ArteryLarge", "ArterioleFeeding", "ArteriolePrecapillary", "CapillaryIslet", "CapillaryExocrine", "VenulePostcapillary")
+
+# Get data from object and convert to dataframe
+data <- as.data.frame(table(int_atlas@meta.data$cluster, int_atlas@meta.data$orig.ident))
+
+# Change colnames
+colnames(data) <- c("Cluster", "Dataset", "Freq")
+
+# Change order of levels 
+data$Cluster <- factor(data$Cluster, levels= my_levels)
+
+# Plot DimPlot
+dPlot <- do_DimPlot(int_atlas, colors.use = color.scheme, legend.icon.size = 3, font.size = 8)
+
+# Plot percentage stacked bar chart
+bPlot <- ggplot(data[], 
+                 aes(fill=Cluster, 
+                             y=Freq, 
+                             x=Dataset)) + 
+  ylab("Cell Ratios") +
+  geom_bar(position="fill", 
+           stat="identity", 
+           color = "black", 
+           show.legend = F) + 
+  theme_classic() + 
+  scale_fill_discrete(breaks= my_levels) + 
+  scale_fill_manual(values = color.scheme) +
+  scale_x_discrete(labels = c("Descartes-Fetal", 
+                              "Tosti-Adult", 
+                              "Tosti-Neonatal")) +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   size=8, 
+                                   face="bold", color = "black"),
+        axis.text.y = element_text(size=8, 
+                                   face="bold", color = "black"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=8, 
+                                   face="bold", color = "black"))
+
+# Plot Split DimPlot
+dPlot_split <- do_DimPlot(int_atlas, legend.icon.size = 3, font.size = 8, split.by = "dataset_age", group.by = "cluster", colors.use = color.scheme)
+
+ggsave(bPlot, filename = '../figures/cellratios_integrated_atlas.svg', width = 1.2, height = 3.5)
+
+ggsave(dPlot, filename = '../figures/dimplot_integrated_atlas.svg', width = 3, height = 3)
+```
+
+## DotPlot of All Genes Facet
+```{r}
+genes_fen <- c("PLVAP", "CAV1", "CAV2", "PTRF", "SDPR", "PRKCDBP", "EHD4", "SNTB2")
+genes_ecm <- c("SPARCL1", "SPARC", "VIM", "EMCN", "COL15A1", "COL4A1", "COL4A2", "HSPG2", "HEG1")
+genes_ins <- c("IGF1", "IGF2", "IGFBP3", "IGFBP4", "IGFBP7", "INSR")
+genes_sox <- c("SOX4", "SOX17", "SOX18")
+genes_imm <- c("FABP5", "B2M", "CD74", "HLA-C")
+
+geneList <- list("Fenestrae and Caveolae \nasssociated genes" = genes_fen, "Extracellular Matrix Proteins"= genes_ecm, "Insulin and IGF \nrelated genes" = genes_ins, "SOX TFs" = genes_sox, "Immune \nrelated genes" = genes_imm)
+
+
+dPlot <- DotPlot(int_atlas, features = geneList, dot.scale = 7) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_legend(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title = "Avg. Exp",
+                                order = 1),
+         size = guide_legend(title = "% Exp",
+                             order = 2))
+
+ggsave(dPlot, filename = '../figures/dotplot_int_atlas_manygenes.svg', width = 8, height = 3)
+
+```
+
+
+## Genes used to identify subpopolations
+```{r}
+# Genes to plot
+genes <- c("SULF1", "ELN", "ARL15", "GJA5", "GJA4", "CD36", "PLVAP", "COL15A1", "CD320", "HLA-C", "DARC")
+
+# Stacked Violin Plot
+svPlot <- StackedVlnPlot(intAtlas, features = genes, cols = color.scheme, )
+
+ggsave(svPlot, filename = "../Results/Figures/Figure6D.png", width = 5, height = 12)
+```
+
+
+## Genes from papers
+```{r}
+# Colorscheme
+# Custom color scheme
+color.scheme <- c("ArteryLarge" = "#FB9A99FF", "ArterioleFeeding" = "#E31A1CFF", "ArteriolePrecapillary" = "#FF7F00FF", "CapillaryIslet" = "#33A02CFF", "CapillaryExocrine" = "#1F78B4FF", "VenulePostcapillary" = "#6A3D9AFF")
+# Genes to plot
+genes <- c("CDH5", "KDR", "FLT1", "PLVAP", "SPARC", "IGFBP3", "ESAM", "RGCC", "CD320", "ENG", "CD36", "COL4A2", "ST6GALNAC3")
+
+# Stacked Violin Plot
+svPlot <- StackedVlnPlot(int_atlas, features = genes, cols = color.scheme)
+
+ggsave(svPlot, filename = "../figures/svplot_papers.svg", width = 5, height = 12)
+```
+
+
+## Trajectory analysis
+```{r}
+# Get expression
+object <- integrated_atlas
+expression <- GetAssayData(object, assay = 'LOG', slot = 'data')
+expression <- t(as.matrix(expression))
+# Get group_name
+group_name <- factor(object@meta.data$cluster)
+
+# Get space
+reducs <- object@reductions[["umap"]]@cell.embeddings[,1:2]
+
+# Trajectory Plot
+traj <- infer_trajectory(space)
+
+trajPlot <- draw_trajectory_plot(
+  space, 
+  progression_group = as.vector(traj$time),
+  path = traj$path,
+  path_size = 1, 
+  contour = F,
+  progression_group_palette = color.scheme
+)  
+
+data <- as.data.frame(traj$path)
+
+tPlot <- trajPlot +
+  xlab("UMAP 1") +
+  ylab("UMAP 2") +
+  scale_color_viridis(name = "Pseudotime", option = "A") +
+  geom_path(data = data, aes(x = Comp1, y = Comp2), color = 'blue', size = 1.5) +
+  theme(axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_text(size=8, face="bold"),
+    axis.title.y = element_text(size=8, face="bold"),
+    legend.text = element_text(size=8, face="bold"),
+    legend.title = element_text(size=8, face="bold"),
+    legend.key.width = unit(0.5, 'cm'),
+    legend.key.height = unit(0.3, 'cm'))
+
+ggsave(tPlot, filename = "../figures/trajectory_plot.svg", width = 2.5, height = 2.5)
+
+
+
+# warning: setting num_permutations to 10 requires a long time (~30min) to run!
+# set it to 0 and define a manual cutoff for the genes (e.g. top 200 from DE) for a much shorter execution time.
+gimp <- gene_importances(expression, 
+                         traj$time,
+                         num_threads = 8)
+gene_sel <- gimp[1:50,]
+expr_sel <- expression[,gene_sel$gene]
+
+color.scheme.magma <- magma(80)
+
+hPlot <- draw_trajectory_heatmap(expr_sel, traj$time, group_name, time_pallete = color.scheme.magma, show_labels_row = T, color = viridis::viridis(7), row_names_gp = gpar(fontface = "bold"), progression_group_palette = color.scheme)
+
+
+ggsave(hPlot, filename = "../figures/traj_heatmap.svg", width = 5, height = 5)
+```
+
+## Individual trajectory plots
+```{r}
+#Personal, making the gene plots
+trajTime <- rev(as.data.frame(traj$time))
+colnames(trajTime) <- "Traj.Time"
+
+meta <- int_atlas@meta.data
+
+newExp_data <- cbind(expr_sel, trajTime)
+
+newExp_data$group <- meta$cluster
+
+plotgenes <- as.vector(c(gene_sel[1:12,"gene"])[[1]])
+
+plotlist <- list()
+
+plot <- ggplot(data = newExp_data,
+               aes(x = Traj.Time,
+                   y = PLVAP)) + geom_point() + 
+    theme_classic() +
+    theme(axis.text.x = element_text(size=0, face="bold"),
+          axis.text.y = element_text(size=8, face="bold"),
+          axis.ticks = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(size=8, face="bold"))
+
+ggsave(plot, filename = '../figures/test.png')
+
+for (i in 1:length(plotgenes)) {
+  
+  plot <- ggplot(data = newExp_data, 
+                 aes_string(x = "Traj.Time", 
+                            y = plotgenes[i])) + geom_smooth(se=F)
+  
+  max_range <- layer_scales(plot)$y$range$range[2] + 0.2
+  max_y <- floor(max_range)
+  
+  plotlist[[i]] <- ggplot(data = newExp_data,
+                          aes_string(x = "Traj.Time", 
+                                     y = plotgenes[i])) + 
+    geom_smooth(se=F, color=magma(80), size = 1.5) + 
+    theme_classic() +
+    xlab("Pseudotime") +
+    theme(axis.text.x = element_text(size=0, face="bold"),
+          axis.text.y = element_text(size=8, face="bold"),
+          axis.ticks = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(size=8, face="bold"))
+}
+
+plot_grid <- plot_grid(plotlist = plotlist, nrow=4, ncol=3)
+
+ggsave(plot_grid, filename = "../Results/Figures/Figure6H.png", width = 15, height = 15)
+
+```
+
+##  Markers
+```{r}
+# Load Data
+# Integrated Atlas
+int_atlas <-integrated_atlas
+
+meta <- int_atlas@meta.data %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "ArteriolePrecapillary",
+    cluster == "Artery 1" ~ "ArteryLarge",
+    cluster == "Artery 2" ~ "ArterioleFeeding",
+    cluster == "Capillary 1" ~ "CapillaryIslet",
+    cluster == "Capillary 2" ~ "CapillaryExocrine",
+    cluster == "Venule" ~ "VenulePostcapillary"))
+
+int_atlas@meta.data <- meta
+
+# Set order
+int_atlas <- SetIdent(int_atlas, value = 'cluster')
+
+int_atlas@active.ident <- factor(int_atlas@active.ident, levels = c("ArteryLarge", "ArterioleFeeding","ArteriolePrecapillary","CapillaryExocrine", "CapillaryIslet", "VenulePostcapillary"))
+
+integrated_atlas_markers <- FindAllMarkers(int_atlas)
+
+saveRDS(integrated_atlas_markers, file = '../objects/integrated_atlas_markers.rds')
+
+integrated_atlas_markers_filt <- integrated_atlas_markers %>%
+  filter(p_val_adj < 0.05 & pct.1 > 0.1 & avg_log2FC > 0.25) %>%
+  mutate(feature = gene)
+
+saveRDS(integrated_atlas_markers_filt, file = '../objects/integrated_atlas_markers_filtered.rds')
+```
+
+## Integrated atlas bulk GOIs
+```{r}
+object <- integrated_atlas
+
+meta <- object@meta.data %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "ArteriolePrecapillary",
+    cluster == "Artery 1" ~ "ArteryLarge",
+    cluster == "Artery 2" ~ "ArterioleFeeding",
+    cluster == "Capillary 1" ~ "CapillaryIslet",
+    cluster == "Capillary 2" ~ "CapillaryExocrine",
+    cluster == "Venule" ~ "VenulePostcapillary"))
+
+object@meta.data <- meta
+
+# Set order
+object <- SetIdent(object, value = 'cluster')
+
+object@active.ident <- factor(object@active.ident, levels = c("ArteryLarge", "ArterioleFeeding","ArteriolePrecapillary","CapillaryExocrine", "CapillaryIslet", "VenulePostcapillary"))
+
+
+#genes <- c("PLVAP", "NKX2-3","COL4A1" , "PCDH17" , "MEOX1" , "TNFSF10")
+
+genes3 <- c(sig_genes, c('SDPR', "CAVIN2", "FABP5", "CD74", "ITM2A", "B2M", "HLA-C", "HLA-B", "SPARC", "SPARCL1", "IGFBP7", "SLCO2A1", "CD320", "SLC2A3", "AKAP12", "PIEZO2", "NEURL1B", "HEG1", "SOX7", "INSR"))
+
+genes2 <- c("SPARC", "NKX2-3", "COL4A1", "IGFBP3", "PCDH17", "NEURL1B")
+
+genes <- setdiff(genes3, genes2)
+
+genes <- deseq_genes
+
+plot_list <- list()
+
+for (i in 1:length(genes)) {
+  
+    p <- DotPlot(object, genes[i])
+  
+  data <- p$data
+  
+  size_min <- min(data$pct.exp)
+  size_max <- max(data$pct.exp)
+  size_breaks <- seq(size_min, size_max, length.out = 4)[-1]
+  size_breaks <- plyr::round_any(size_breaks, 1, f = floor)
+  #size_breaks[1] <- plyr::round_any(size_breaks[1], 1, f = ceiling)
+  #size_breaks[3] <- plyr::round_any(size_breaks[3], 1, f = floor)
+  #size_breaks[2] <- plyr::round_any((size_breaks[1] + ((size_breaks[3]-size_breaks[1])/2)), 1, f = ceiling)
+  
+  colorbar_min <- min(data$avg.exp.scaled)
+  colorbar_max <- max(data$avg.exp.scaled)
+  colorbar_breaks <- c(colorbar_min, 0, colorbar_max)
+  colorbar_values <- rescale(colorbar_breaks)
+  
+  
+  plot_list[[i]] <- ggplot(data, aes(x = features.plot, 
+                  y = id,
+                  color = avg.exp.scaled,
+                  size = pct.exp)) + 
+    geom_point() + 
+    scale_size_continuous(range = c(-2, 6),
+                                   #limits = c(size_min, 
+                                              #size_max),
+                                   breaks = size_breaks) +
+    scale_colour_gradientn(colors = c('blue3', 'white', 'red3'),
+                           values = colorbar_values,
+                           breaks = waiver(),
+                           n.breaks = 4) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 0.5, angle = 0),
+           axis.text.y = element_blank(),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.3, 'cm'),
+         legend.key.height = unit(0.15, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title = "Avg. Exp",
+                                order = 1),
+         size = guide_legend(title = "% Exp",
+                             order = 2)) 
+
+
+}
+
+gridrow <- ceiling(length(genes)/6)
+grid <- plot_grid(plotlist = plot_list, nrow=gridrow, ncol=6)
+
+ggsave(grid, filename = "../figures/integrated_atlas_bulk_goi3_dotplot.svg", 
+width = 2.5*3, height = (4.8))
+```
+
+## Integrated atlas In Situ GOIs
+```{r}
+object <- integrated_atlas
+
+meta <- object@meta.data %>%
+  mutate(cluster = case_when(
+    cluster == "Arteriole" ~ "ArteriolePrecapillary",
+    cluster == "Artery 1" ~ "ArteryLarge",
+    cluster == "Artery 2" ~ "ArterioleFeeding",
+    cluster == "Capillary 1" ~ "CapillaryIslet",
+    cluster == "Capillary 2" ~ "CapillaryExocrine",
+    cluster == "Venule" ~ "VenulePostcapillary"))
+
+object@meta.data <- meta
+
+# Set order
+object <- SetIdent(object, value = 'cluster')
+
+object@active.ident <- factor(object@active.ident, levels = c("ArteryLarge", "ArterioleFeeding","ArteriolePrecapillary","CapillaryExocrine", "CapillaryIslet", "VenulePostcapillary"))
+
+
+genes <- c("PLVAP", "NKX2-3","SPARC")
+
+plot_list <- list()
+
+for (i in 1:length(genes)) {
+  
+    p <- DotPlot(object, genes[i])
+  
+  data <- p$data
+  
+  size_min <- min(data$pct.exp)
+  size_max <- max(data$pct.exp)
+  size_breaks <- seq(size_min, size_max, length.out = 4)[-1]
+  size_breaks <- plyr::round_any(size_breaks, 1, f = floor)
+  #size_breaks[1] <- plyr::round_any(size_breaks[1], 1, f = ceiling)
+  #size_breaks[3] <- plyr::round_any(size_breaks[3], 1, f = floor)
+  #size_breaks[2] <- plyr::round_any((size_breaks[1] + ((size_breaks[3]-size_breaks[1])/2)), 1, f = ceiling)
+  
+  colorbar_min <- min(data$avg.exp.scaled)
+  colorbar_max <- max(data$avg.exp.scaled)
+  colorbar_breaks <- c(colorbar_min, 0, colorbar_max)
+  colorbar_values <- rescale(colorbar_breaks)
+  
+  
+  plot_list[[i]] <- ggplot(data, aes(x = features.plot, 
+                  y = id,
+                  color = avg.exp.scaled,
+                  size = pct.exp)) + 
+    geom_point() + 
+    scale_size_continuous(range = c(-2, 6),
+                                   #limits = c(size_min, 
+                                              #size_max),
+                                   breaks = size_breaks) +
+    scale_colour_gradientn(colors = c('blue3', 'white', 'red3'),
+                           values = colorbar_values,
+                           breaks = waiver(),
+                           n.breaks = 4) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 0.5, angle = 0),
+           axis.text.y = element_blank(),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.4, 'cm'),
+         legend.key.height = unit(0.25, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title = "Avg. Exp",
+                                order = 1),
+         size = guide_legend(title = "% Exp",
+                             order = 2)) 
+
+
+}
+
+grid <- plot_grid(plotlist = plot_list, nrow=1, ncol=3)
+
+ggsave(grid, filename = "../figures/integrated_atlas_bulk_goi_dotplot.svg", 
+       width = 4, 
+       height = 2)
+```
+
+
+## Signature Gene Assessment
+```{r}
+# TabulaMuris_ecatlas
+object <- integrated_atlas
+species <- 'human'
+signature_genes <- signature_genes
+meta <- "cluster"
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T) + coord_flip()
+
+ggsave(vPlot, filename = "../figures/integrated_atlas_signature_score.svg", width = 3.5, height = 3)
+
+```
+
+
