@@ -1,5 +1,5 @@
 # pancet
-PANC-reatic E-ndothelial T-ranscriptomic Profile 
+## PANC-reatic E-ndothelial T-ranscriptomic Profile 
 
 This repository runs all codes for the following publication:
 https://www.biorxiv.org/content/10.1101/2023.04.19.537540v1
@@ -8,10 +8,8 @@ Uncovering the transcriptomic heterogeneity of pancreatic endothelial cells usin
 
 Khan, S.T., et al. bioRxiv, 2023
 
-# ShinyApp
+## ShinyApp
 The results from this paper can be explored here: https://vasconcelos.shinyapps.io/pancreatic_endothelial/
-
-# Description
 
 ## Directory
 The directory contains the following folders:
