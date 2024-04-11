@@ -1,0 +1,1055 @@
+---
+title: "Tabula Sapiens Analysis"
+---
+
+# Initiate
+```{r}
+# Source utilities
+source('../scripts/utilities.R')
+```
+
+## Load data
+```{r}
+# Data sets
+# Tabula Sapiens EC atlas
+tabulasapiens_ecatlas <- readRDS('../objects/tabulasapiens_ecatlas.rds')
+# Tabula Sapiens Pancreas
+tabulasapiens_pancreas <- readRDS('../objects/tabulasapiens_pancreas.rds')
+# Tabula Sapiens Pancreas ECs
+tabulasapiens_pancreas_ecs <- readRDS('../objects/tabulasapiens_pancreas_ec.rds')
+# Integrated atlas
+integrated_atlas <- readRDS('../objects/integrated_atlas.rds')
+
+# HGNC 2023 database
+hgnc <- readRDS('../utilities/HGNC_Apr2023.rds')
+
+# Gene sets
+# Curated set of EC genes
+endothelial_genes <- readRDS('../objects/endothelial_genes.rds')
+# Signature genes
+signature_genes <- readRDS('../objects/signature_genes.rds')
+
+# Filtered markers from Tabula Muris and Descartes
+tabulamuris_ecatlas_pancreas_markers_filt <- readRDS('../objects/tabulamuris_ecatlas_pancreas_markers_filtered.rds')
+descartes_ecatlas_pancreas_markers_filt <- readRDS('../objects/descartes_ecatlas_pancreas_markers_filtered.rds')
+```
+
+## Pancreas Markers
+```{r}
+tabulasapiens_ecatlas_pancreas_markers <- FindMarkers(tabulasapiens_ecatlas, 
+                                ident.1 = c("Pancreas"))
+
+saveRDS(tabulasapiens_ecatlas_pancreas_markers, file = '../objects/tabulasapiens_ecatlas_pancreas_markers.rds')
+
+tabulasapiens_ecatlas_pancreas_markers_xl <- tabulasapiens_ecatlas_pancreas_markers %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "Percent Expression in Pancreas ECs", "Percent Expression in other ECs", "Bonferroni-adjusted P value")) %>%
+  mutate(Gene = rownames(.))
+
+writexl::write_xlsx(tabulasapiens_ecatlas_pancreas_markers_xl, path = '../results/Table-S6.xlsx')
+
+tabulasapiens_ecatlas_pancreas_markers_filt <- tabulasapiens_ecatlas_pancreas_markers %>%
+  filter(pct.1 > 0.1 & 
+           avg_log2FC > 0.25 &
+           p_val_adj < 0.05) %>%
+  mutate(feature = rownames(.),
+         feature_updated = updateGenes(feature, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval) %>%
+  filter(feature_updated %in% endothelial_genes) %>%
+  arrange(desc(log2FC.neglogpval))
+
+saveRDS(tabulasapiens_ecatlas_pancreas_markers_filt, file = '../objects/tabulasapiens_ecatlas_pancreas_markers_filtered.rds')
+
+tabulasapiens_ecatlas_pancreas_markers_filt_xl <- tabulasapiens_ecatlas_pancreas_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(tabulasapiens_ecatlas_pancreas_markers_filt_xl, path = '../results/Table-S7.xlsx')
+
+tabulasapiens_ecatlas_pancreas_markers_filt_genes <- tabulasapiens_ecatlas_pancreas_markers_filt$feature_updated
+
+tabulamuris_ecatlas_pancreas_markers_filt_genes <- tabulamuris_ecatlas_pancreas_markers_filt$feature_updated
+
+descartes_ecatlas_pancreas_markers_filt_genes <- descartes_ecatlas_pancreas_markers_filt$feature_updated
+
+
+# Overlap of all filtered genes
+venn_list <- list("TabulaSapiens" = tabulasapiens_ecatlas_pancreas_markers_filt_genes,
+                  "TabulaMuris" = tabulamuris_ecatlas_pancreas_markers_filt_genes,
+                  "Descartes" = descartes_ecatlas_pancreas_markers_filt_genes)
+venn <- ggvenn(
+  venn_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF"),
+  stroke_size = 0.5, 
+  set_name_size = 1,
+  show_percentage = F, text_size = 4, 
+  )
+
+ggsave(venn, filename = '../figures/venn_filtered_genes_all_ec_atlases.svg', width = 3, height = 3)
+
+ts <- tabulasapiens_ecatlas_pancreas_markers_filt_genes
+tm <- tabulamuris_ecatlas_pancreas_markers_filt_genes
+d <- descartes_ecatlas_pancreas_markers_filt_genes
+
+signature_genes_intersect <- Reduce(intersect, list(ts, tm, d))
+
+saveRDS(signature_genes_intersect, file = '../objects/signature_genes_intersect.rds')
+
+signature_genes_expanded <- unique(c(intersect(ts,tm),
+                                     intersect(ts,d),
+                                     intersect(d,tm)))
+
+saveRDS(signature_genes_expanded, file = '../objects/signature_genes_expanded.rds')
+```
+
+## Atlas summary
+```{r}
+# Input variables
+object <- tabulasapiens_ecatlas
+markers <- tabulasapiens_ecatlas_pancreas_markers
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+  
+  
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/tabulasapiens_ecatlas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+## Signature Score Assessment
+```{r}
+object <- tabulasapiens_ecatlas
+markers <- tabulasapiens_ecatlas_pancreas_markers_filt
+meta <- 'organ_tissue'
+cluster <- c('Pancreas')
+red <- 'vpca'
+species <- 'human'
+
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score', assay = 'LOG')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/tabulasapiens_ecatlas_signature_score.svg", width = 3, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+object <- ScaleData(object, assay = 'LOG', features = present_genes)
+object <- RunPCA(object, assay = 'LOG', features = c(signature_genes))
+object <- FindNeighbors(object, reduction = 'pca', dims = 1:30)
+object <- FindClusters(object, resolution = 0.2)
+object <- RunVarimaxPCA(object, features = c(signature_genes), reduction = 'pca', norm = 'LOG', ncomp = 30, scaleby_sdev = F)
+
+clusters <- unique(object@meta.data[,"seurat_clusters"])
+coln <- length(clusters)
+leg_nrow <- coln/3
+
+data <- object@meta.data %>%
+  rename("clusters" = seurat_clusters) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != '3') %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", coln))
+
+colors <- data %>%
+  pull(cols, clusters)
+
+colors['other'] <-'grey'
+
+pca_df <- object@reductions[['vpca']]@cell.embeddings %>%
+  as.data.frame %>%
+  cbind(FetchData(object, vars = c(meta, 'seurat_clusters'))) %>%
+  mutate(clusters = seurat_clusters,
+         clusters = ifelse(organ_tissue == 'Pancreas', clusters, 'other')) %>%
+  arrange(organ_tissue != 'Pancreas', desc(VPC_3))#Clever hack to reorder
+
+clusters <- unique(pca_df$clusters)
+
+colors <- do_ColorPalette("steelblue", length(clusters))
+
+names(colors) <- clusters
+
+colors['other'] <-'grey'
+
+p <- ggplot(pca_df, aes(x=VPC_1, y=VPC_3,  color= clusters)) +
+    geom_point(size = 1) +
+    scale_color_manual(values = colors) + 
+  theme_classic() +
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+      axis.title=element_text(size = 8, face = "bold"),
+      axis.text = element_text(size = 8, face = "bold"),
+      legend.title = element_text(size=8, face = "bold"),
+      legend.text = element_text(size=8, vjust = 1, hjust = 1, face = "bold"))
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.png', 
+       width = 4, height = 4)
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.svg', 
+       width = 4, height = 3.5)
+
+data <- object@meta.data %>% 
+  filter(organ_tissue == 'Pancreas') %>% 
+  rename("clusters" = seurat_clusters) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != '3') %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", coln))
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = rev(clusters)), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Cluster Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = colors) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+ggsave(bPlot, filename = '../figures/tabulasapiens_vpca_barplot.svg', 
+       width = 1, height = 3.5)
+
+genes <- markers %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature)
+
+# Ident
+object <- SetIdent(object, value = meta)
+
+# Hiearchical clustering:
+p <- DotPlot(object, features = present_genes)
+
+data <- p$data %>% 
+  mutate(weighted.avg.exp.scaled = avg.exp.scaled*pct.exp/100) %>%
+  select(-pct.exp, -avg.exp, - avg.exp.scaled)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = weighted.avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+data <- data[,-1]
+
+mat <- as.matrix(data)
+
+clust <- hclust(dist(mat)) # hclust with distance matrix
+
+my_levels <- sub("[.]", " ", clust$labels[clust$order])
+
+ # create dendrogram
+ggtree_plot <- ggtree::ggtree(clust)
+
+# Relevel 
+
+# For ordering by score: object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+# For hierarchical clustering: 
+
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+dPlot <- DotPlot(object, features = c(genes), dot.scale = 5) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,1), align = 'h')
+
+  ggsave(plot, width = 4.5, height = 4.5, filename = "../figures/tabulasapiens_pancreas_signature_genes_dotplot.svg")
+
+
+pca_df <- object@reductions[['vpca']]@feature.loadings %>%
+  as.data.frame %>%
+  mutate(genes = rownames(.),
+         label = ifelse(rank(VPC_3) <= 5 | 
+                          rank(-VPC_3) <= 5 | 
+                          rank(VPC_1) <= 5 |
+                          rank(-VPC_1) <= 5, genes, NA),
+         VPC_1 = -VPC_1)
+
+p <- ggplot(pca_df, aes(x=VPC_1, y=VPC_3, label = label)) +
+    geom_point(size = 1, color = 'darkred') + 
+geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.7) +
+  theme_classic() +  
+  labs( x = "VPC 1",
+        y = "VPC 3") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+ggsave(plot = p, filename = '../figures/tabulasapiens_ecatlas_signature_genes_vpcafeatures.png', width = 3.5, height = 3.5)
+```
+
+## S1P genes DotPlot EC atlas
+```{r}
+object <- tabulasapiens_ecatlas
+genes_kinases <- c("SPHK1", "SPHK2")
+genes_receptors <- c("S1PR1", "S1PR2", "S1PR3", "S1PR4", "S1PR5")
+genes_lipase <- c("PLPP1", "PLPP2", "PLPP3")
+
+gene_list <- list("Sphingosine\nKinases" = genes_kinases, "S1P\nReceptors"= genes_receptors, "Phospholipid\nLipases" = genes_lipase)
+
+dPlot <- DotPlot(object, features = gene_list, dot.scale = 7) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_legend(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title="Avg. Exp."),
+         size = guide_legend(title="% Exp."))
+
+
+ggsave(dPlot, filename = '../figures_publish2/tabulasapiens_ecatlas_s1pgenes_dotplot.svg', width = 5, height = 6)
+```
+
+## S1P genes DotPlot Pancreas
+```{r}
+object <- tabulasapiens_pancreas
+genes_kinases <- c("SPHK1", "SPHK2")
+genes_receptors <- c("S1PR1", "S1PR2", "S1PR3", "S1PR4", "S1PR5")
+genes_lipase <- c("PLPP1", "PLPP2", "PLPP3")
+
+gene_list <- list("Sphingosine\nKinases" = genes_kinases, "S1P\nReceptors"= genes_receptors, "Phospholipid\nLipases" = genes_lipase)
+
+dPlot <- DotPlot(object, features = gene_list, dot.scale = 7) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_legend(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title="Avg. Exp.", order = 2),
+         size = guide_legend(title="% Exp.", order = 1))
+
+
+ggsave(dPlot, filename = '../figures/tabulasapiens_pancreas_s1pgenes_dotplot.svg', width = 5, height = 3)
+```
+
+## Islet Papers Signature Gene Assessment
+```{r}
+# TabulaMuris_ecatlas
+object <- tabulasapiens_ecatlas
+species <- 'human'
+signature_genes  <- c("CDH5", "KDR", "FLT1", "PLVAP", "SPARC", "IGFBP3", "ESAM", "RGCC", "CD320", "ENG", "CD36", "COL4A2", "ST6GALNAC3")
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+markers <- tabulasapiens_ecatlas_pancreas_markers_filt
+
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/tabulasapiens_ecatlas_signature_score.svg", width = 3, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+genes <- markers %>%
+  filter(feature_updated %in% present_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature_updated)
+
+# Relevel 
+object <- SetIdent(object, value = meta)
+
+object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 4) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right') +
+  guides(color = guide_colorbar(title="Avg. Exp."),
+         size = guide_legend(title="% Exp."))
+
+
+ggsave(dPlot, width = 7.7, height = 3.7, filename = "../figures/tabulasapiens_ecatlas_signature_genes_dotplot.svg")
+```
+
+## Pancreas EC reference mapping with integrated atlas
+```{r}
+query <- tabulasapiens_pancreas_ecs
+reference <- integrated_atlas
+
+anchors <- FindTransferAnchors(reference = reference, 
+                               query = query, 
+                               dims = 1:30,
+                               reference.reduction = "pca")
+
+predictions <- TransferData(anchorset = anchors, 
+                            refdata = reference@meta.data$cluster, 
+                            dims = 1:30)
+
+query <- AddMetaData(query, metadata = predictions)
+
+meta <- query@meta.data %>%
+  mutate(predicted.id = case_when(
+    predicted.id == "Artery 2" ~ "ArterioleFeeding",
+    predicted.id == "Capillary 1" ~ "CapillaryIslet",
+    predicted.id == "Venule" ~ "VenulePostcapillary"))
+
+query@meta.data <- meta
+
+query <- SetIdent(query, value = 'predicted.id')
+
+# DimPlot of object
+color.scheme <- c("ArterioleFeeding" = "#E31A1CFF", "CapillaryIslet" = "#33A02CFF", "VenulePostcapillary" = "#6A3D9AFF")
+
+cluster_n <- length(color.scheme)
+
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(query,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = color.scheme, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+ggsave(dPlot, filename = "../figures/tabulaspaiens_pancreas_predited.id.svg", width = 3, height = 3)
+
+# Reorder
+query@active.ident <- factor(query@active.ident, levels = c("ArterioleFeeding", "CapillaryIslet", "VenulePostcapillary"))
+
+# Genes to plot
+genes <- c("GJA4", "CD36", "ACKR1")
+
+# Stacked Violin Plot
+svPlot <- StackedVlnPlot(query, features = genes, cols = color.scheme)
+
+ggsave(svPlot, filename = "../figures/tabulaspaiens_pancreas_ec_svplot.svg", width = 5, height = 7)
+
+```
+
+
+## Log2FC graph Tabula Sapiens EC atlas vs Descartes EC atlas
+```{r}
+tabulasapiens_ecatlas_pancreas_markers_filt_genes <- tabulasapiens_ecatlas_pancreas_markers_filt$feature_updated
+
+tabulamuris_ecatlas_pancreas_markers_filt_genes <- tabulamuris_ecatlas_pancreas_markers_filt$feature_updated
+
+descartes_ecatlas_pancreas_markers_filt_genes <- descartes_ecatlas_pancreas_markers_filt$feature_updated
+
+human_only_genes <- setdiff(intersect(tabulasapiens_ecatlas_pancreas_markers_filt_genes, descartes_ecatlas_pancreas_markers_filt_genes), tabulamuris_ecatlas_pancreas_markers_filt_genes)
+
+adult_only_genes <- setdiff(intersect(tabulasapiens_ecatlas_pancreas_markers_filt_genes, tabulamuris_ecatlas_pancreas_markers_filt_genes), descartes_ecatlas_pancreas_markers_filt_genes)
+
+
+# Cutoff
+cutoff_circle <- function(x, y, d) {
+  distance_from_origin <- sqrt(x^2 + y^2)
+  return(distance_from_origin > d)
+}
+
+# TabulaMuris_ecatlas
+signature_genes <- adult_only_genes
+markers1 <- tabulasapiens_ecatlas_pancreas_markers_filt
+markers2 <- tabulamuris_ecatlas_pancreas_markers_filt
+
+markers1_signature <- markers1 %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(match(feature_updated, signature_genes)) %>%
+  select(feature_updated, avg_log2FC, norm.pct.diff)%>%
+  rename_all(~ c('feature', 'log2FC_1', 'pct_1'))
+
+markers2_signature <- markers2 %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(match(feature_updated, signature_genes))%>%
+  select(feature_updated, avg_log2FC, norm.pct.diff)%>%
+  rename_all(~ c('feature', 'log2FC_2', 'pct_2')) 
+
+markers_merged <- left_join(markers1_signature, 
+                            markers2_signature) %>%
+  mutate(label = ifelse(cutoff_circle(log2FC_1,
+                                      log2FC_2,
+                                      2), feature, NA))
+
+# Sig  plot
+size_min <- plyr::round_any(min(markers_merged$pct_2), 0.5, f = floor)
+size_max <- plyr::round_any(max(markers_merged$pct_2), 0.5, f = ceiling)
+size_breaks <- seq(size_min, size_max, length.out = 5)[-1]
+
+
+sig_plot <- ggplot(data = markers_merged,
+                   aes(x = log2FC_1,
+                       y = log2FC_2,
+                       color = pct_1,
+                       label = label),
+                   show.legend = F) +
+  scale_color_viridis_c(option = 'A',
+                        direction = -1,
+                        n.breaks = 5) +
+  geom_point(alpha = 1,
+             aes(size = pct_2)) +
+  geom_label_repel(aes(point.size = pct_2),  
+                   point.padding = 0,
+                   max.overlaps = Inf,
+                   show.legend = F,
+                   size = 3,
+                   box.padding = 0.5,
+                   min.segment.length = 0,
+                   fill = "white",  # Set label background color to black
+                   color = "black",  # Set label text color to black
+                   segment.color = "black",
+                   fontface = "bold") +
+  scale_size_continuous(range = c(-3, 7), 
+                        limits = c(size_min,
+                                   size_max),
+                        breaks = size_breaks) +
+  theme_classic() +
+  ylab("Average Log2FC Human Fetal EC Atlas") +
+  xlab("Average Log2FC Adult Mouse EC Atlas") +
+  theme(axis.text=element_text(size=8),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'right',
+        legend.direction = 'vertical',
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(
+    color = guide_colorbar(title = "Adult Mouse\nNorm. % Diff"),
+    size = guide_legend(title = "Human Fetal\nNorm. % Diff"))
+
+
+ggsave(sig_plot, filename = "../figures/tabulasapiens_tabulamuris_log2FC_plot_adult_only_genes.svg",
+       width = 4.5,
+       height = 3.5)
+```
+
+## Log2FC graph Tabula Sapiens EC atlas vs Tabula Muris EC atlas
+```{r}
+# Cutoff
+cutoff_circle <- function(x, y, d) {
+  distance_from_origin <- sqrt(x^2 + y^2)
+  return(distance_from_origin > d)
+}
+
+# TabulaMuris_ecatlas
+signature_genes <- human_only_genes
+markers1 <- tabulasapiens_ecatlas_pancreas_markers_filt
+markers2 <- descartes_ecatlas_pancreas_markers_filt
+
+markers1_signature <- markers1 %>%
+  mutate(pct.rel.weight.diff = 1-(pct.2/pct.1))%>%
+  filter(feature_updated %in% signature_genes &
+           avg_log2FC > 0.25) %>%
+  arrange(match(feature_updated, signature_genes)) %>%
+  select(feature_updated, avg_log2FC, pct.rel.weight.diff)%>%
+  rename_all(~ c('feature', 'log2FC_1', 'pct_1'))
+
+markers2_signature <- markers2 %>%
+  mutate(pct.rel.weight.diff = 1-(pct.2/pct.1))%>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(match(feature_updated, signature_genes))%>%
+  select(feature_updated, avg_log2FC, pct.rel.weight.diff)%>%
+  rename_all(~ c('feature', 'log2FC_2', 'pct_2')) 
+
+markers_merged <- left_join(markers1_signature, 
+                            markers2_signature) %>%
+  mutate(label = ifelse(cutoff_circle(log2FC_1,
+                                      log2FC_2,
+                                      1.7), feature, NA))
+
+# Sig  plot
+size_min <- plyr::round_any(min(markers_merged$pct_2), 0.5, f = floor)
+size_max <- plyr::round_any(max(markers_merged$pct_2), 0.5, f = ceiling)
+size_breaks <- seq(size_min, size_max, length.out = 5)[-1]
+
+
+sig_plot <- ggplot(data = markers_merged,
+                   aes(x = log2FC_1,
+                       y = log2FC_2,
+                       color = pct_1,
+                       label = label),
+                   show.legend = F) +
+  scale_color_viridis_c(option = 'A',
+                        direction = -1,
+                        n.breaks = 5) +
+  geom_point(alpha = 1,
+             aes(size = pct_2)) +
+  geom_label_repel(aes(point.size = pct_2),  
+                   point.padding = 0,
+                   max.overlaps = Inf,
+                   show.legend = F,
+                   size = 3,
+                   box.padding = 0.5,
+                   min.segment.length = 0,
+                   fill = "white",  # Set label background color to black
+                   color = "black",  # Set label text color to black
+                   segment.color = "black",
+                   fontface = "bold") +
+  scale_size_continuous(range = c(-3, 7), 
+                        limits = c(size_min,
+                                   size_max),
+                        breaks = size_breaks) +
+  theme_classic() +
+  ylab("Average Log2FC Tabula Sapiens Human Adult EC Atlas") +
+  xlab("Average Log2FC Tabula Muris Adult Human EC Atlas") +
+  theme(axis.text=element_text(size=8),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'right',
+        legend.direction = 'vertical',
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(
+    color = guide_colorbar(title = "Tabula Muris\nNormalized % Diff",
+                            breaks = c(0,0.25,0.5,0.75,1)),
+    size = guide_legend(title = "Tabula Sapiens\nNormalized % Diff"))
+
+
+ggsave(sig_plot, filename = "../figures/tabulasapiens_tabulamuris_log2FC_plot_signature_genes.svg",
+       width = 4.5,
+       height = 3.5)
+```
+
+## Contamination plot Descartes EC atlas
+```{r}
+endothelial_genes <- endothelial_genes
+signature_genes <- signature_genes
+markers <- tabulasapiens_ecatlas_pancreas_markers
+
+data <- markers %>%
+  filter(avg_log2FC > 0 &
+           p_val_adj < 0.05 &
+           pct.1  > 0.1 ) %>%
+  mutate(feature = rownames(.),
+         legend = ifelse(feature %in% endothelial_genes, "Other EC genes", "Potential Contamination"),
+         legend = ifelse(feature %in% signature_genes, "Pancreas-EC enriched gene", legend)) %>%
+  group_by(legend) %>%
+  arrange(desc(avg_log2FC)) %>%
+  mutate(named = ifelse(row_number() <= 5, feature, NA))
+  
+
+col.font <- c("Other EC genes" = 'darkgreen',
+           "Potential Contamination" = '#E31A1CFF',
+           "Pancreas-EC enriched gene" = 'blue')
+
+col.box <- c("White", "White", "White")
+
+scPlot_desc <- ggplot(data = data,
+                     aes(y = avg_log2FC,
+                         x = pct.1*100),
+                     show.legend = F) +
+  geom_point(size = 1 * 1.5,
+             color = 'black') +
+  geom_point(data = data, 
+             aes(y = avg_log2FC, 
+                 x =  pct.1*100, 
+                 color = legend),
+             size =1) + 
+  xlim(0,130) + 
+  scale_color_manual(values = col.font) +
+  geom_hline(yintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_label_repel(data = data, 
+                   aes(label = named, fill=legend, color = legend), 
+                   max.overlaps = Inf, 
+                   show.legend = F, 
+                   xlim  = c(105,NA), 
+                   force_pull   = 0, 
+                   hjust = 0, 
+                   direction = "y", 
+                   segment.linetype = 7,
+                   segment.size = 0.5,
+                   fontface = "bold",
+                   size =2.7) +
+    scale_fill_manual(values = col.box) + 
+  scale_color_manual(values = col.font) +
+    theme_classic() +  
+    ylab("Average log2FC") + 
+    xlab("Percentage of cells expressing gene") + 
+    theme(axis.text=element_text(size=8),
+          axis.title.x = element_text(size=8, face="bold"),
+          axis.title.y = element_text(size=8, face="bold"),
+          legend.title = element_text(size=8, face = "bold"),
+          legend.text = element_text(size=8, face = "bold"),
+          legend.position = 'bottom',
+          legend.direction = 'vertical',
+          legend.key.width = unit(0.5, 'cm'),
+          legend.key.height = unit(0.3, 'cm')) +
+  guides(colour = guide_legend(override.aes = list(size=2)))
+
+ggsave(scPlot_desc, filename = '../figures/contamination_plot_tabulasapiens_ecatlas.svg', height = 4.5, width = 3)
+
+ggsave(scPlot_desc, filename = '../figures/contamination_plot_tabulasapiens_ecatlas.png', height = 4.5, width = 3)
+```
+
+
+
+```{r}
+
+# Input variables
+object <- tabulamuris_ecatlas
+species <- 'mouse'
+signature_genes <- signature_genes
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+markers <- tabulamuris_ecatlas_pancreas_markers
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+
+object_genes <- rownames(tabulamuris_ecatlas)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes,all_tabulamuris_ecatlas_genes_H_upd)))
+
+present_genes <- object_genes_upd[present_ind]
+
+
+## Descartes EC atlas
+descartes_ecatlas <- readRDS('../objects/descartes_ecatlas.rds')
+
+# Load pancreas datasets and markers
+
+## Descartes pancreas dataset
+descartes_pancreas <- readRDS('../objects/descartes_pancreas.rds')
+
+## Tabula Muris pancreas dataset
+tabulamuris_pancreas <- readRDS('../objects/tabulamuris_pancreas.rds')
+
+## Tosti adult pancreas datset
+tostiadult_pancreas <- readRDS('../objects/tostiadult_pancreas_subset.rds')
+
+## Tosti neonatal pancreas dataset
+tostineonatal_pancreas <- readRDS('../objects/tostineonatal_pancreas.rds')
+
+## Descartes EC atlas
+descartes_ecatlas <- readRDS('../objects/descartes_ecatlas.rds')
+
+# Load pancreas datasets and markers
+
+## Descartes pancreas dataset
+descartes_pancreas <- readRDS('../objects/descartes_pancreas.rds')
+
+## Tabula Muris pancreas dataset
+tabulamuris_pancreas <- readRDS('../objects/tabulamuris_pancreas.rds')
+
+## Tosti adult pancreas datset
+tostiadult_pancreas <- readRDS('../objects/tostiadult_pancreas_subset.rds')
+
+## Tosti neonatal pancreas dataset
+tostineonatal_pancreas <- readRDS('../objects/tostineonatal_pancreas.rds')
+
+genes <- markers %>%
+  mutate(feature = rownames(.),
+         pct.diff = pct.1 - pct.2) %>%
+  filter(feature %in% present_genes) %>%
+  arrange(desc(pct.diff), desc(avg_log2FC)) %>%
+  pull(features)
+
+data <- FetchData(object, vars = c('signature_score1', "Organ")) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+# Top 30
+
+# Relevel object@ident
+object <- SetIdent(object, value = meta)
+
+object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+dPlot <- DotPlot(tabs_ecatlas, features = c(genes[1:30]), dot.scale = 4) + 
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5) +
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+
+ggsave(dPlot, width = 8, height = 3.5, filename = "../figures_publish/dotplot.svg")
+```

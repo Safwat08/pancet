@@ -1,0 +1,1704 @@
+---
+title: "Pancreas_EC_enriched_signature.Rds"
+---
+
+# Initiate
+```{r}
+# Source utilities
+source('../scripts/utilities.R')
+```
+
+# Load data
+```{r}
+# Load EC atlases
+## Tabula Muris EC atlas
+tabulamuris_ecatlas <- readRDS('../objects/tabulamuris_ecatlas.rds')
+## Descartes EC atlas
+descartes_ecatlas <- readRDS('../objects/descartes_ecatlas.rds')
+
+# Load pancreas datasets and markers
+## Descartes pancreas dataset
+descartes_pancreas <- readRDS('../objects/descartes_pancreas.rds')
+## Tabula Muris pancreas dataset
+tabulamuris_pancreas <- readRDS('../objects/tabulamuris_pancreas.rds')
+## Tosti adult pancreas datset
+tostiadult_pancreas <- readRDS('../objects/tostiadult_pancreas_subset.rds')
+DefaultAssay(tostiadult_pancreas) <- "LOG"
+
+## Tosti neonatal pancreas dataset
+tostineonatal_pancreas <- readRDS('../objects/tostineonatal_pancreas.rds')
+## HGNC database
+hgnc <- readRDS('../utilities/HGNC_Apr2023.rds')
+```
+
+# Get curated set of endothelial markers from pancreas datasets
+```{r}
+descartes_pancreas_ec_markers <- FindMarkers(descartes_pancreas, 
+                                ident.1 = c("Endothelial"),
+                                ident.2 = c("Acinar", "Ductal", "T", "B", "Beta", "Schwann", "Erythroblasts", "Alpha", "Delta", "Macrophage", "CCL19_CCL21 Pos")) 
+
+saveRDS(descartes_pancreas_ec_markers, file = '../objects/descartes_pancreas_ec_markers.rds')
+
+descartes_pancreas_ec_markers_filt <- descartes_pancreas_ec_markers %>%
+  filter(p_val_adj < 0.05 & 
+           pct.1 > 0.1 & 
+           avg_log2FC > 0.5) %>%
+  mutate(feature = rownames(.),
+         feature_updated = updateGenes(feature, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval)
+
+saveRDS(descartes_pancreas_ec_markers_filt, file = '../objects/descartes_pancreas_ec_markers_filtered.rds')
+
+descartes_pancreas_ec_markers_filt_xl <- descartes_pancreas_ec_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(descartes_pancreas_ec_markers_filt_xl, path = '../results/Table-S3_1.xlsx')
+
+descartes_pancreas_ec_markers_genes <- descartes_pancreas_ec_markers_filt$feature_updated
+
+
+tabulamuris_pancreas_ec_markers <- FindMarkers(tabulamuris_pancreas, 
+                                ident.1 = c("Endothelial"),
+                                ident.2 = c("Alpha", "Beta", "Acinar", "Delta", "Ductal", "Macrophage"))
+
+saveRDS(tabulamuris_pancreas_ec_markers, file = '../objects/tabulamuris_pancreas_ec_markers.rds')
+
+tabulamuris_pancreas_ec_markers_filt <- tabulamuris_pancreas_ec_markers %>%
+  filter(p_val_adj < 0.05 & 
+           pct.1 > 0.1 & 
+           avg_log2FC > 0.5) %>%
+  mutate(feature = rownames(.),
+         feature_human = convertGenes(feature, convert_to = 'human'),
+         feature_updated = updateGenes(feature_human, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval)
+
+saveRDS(tabulamuris_pancreas_ec_markers_filt, file = '../objects/tabulamuris_pancreas_ec_markers_filtered.rds')
+
+tabulamuris_pancreas_ec_markers_filt_xl <- tabulamuris_pancreas_ec_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Human Homologue", "Updated Human Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(tabulamuris_pancreas_ec_markers_filt_xl, path = '../results/Table-S3_2.xlsx')
+
+tabulamuris_pancreas_ec_markers_genes <- tabulamuris_pancreas_ec_markers_filt$feature_updated
+
+tostiadult_pancreas_ec_markers <- FindMarkers(tostiadult_pancreas, 
+                                ident.1 = c("Endothelial"),
+                                ident.2 = c("Acinar-i", "Acinar-s", "Ductal", "Alpha", "Beta", "Delta", "Macrophage", "MUC5B+ Ductal"))
+
+saveRDS(tostiadult_pancreas_ec_markers, file = '../objects/tostiadult_pancreas_ec_markers.rds')
+
+tostiadult_pancreas_ec_markers_filt <- tostiadult_pancreas_ec_markers %>%
+  filter(p_val_adj < 0.05 & 
+           pct.1 > 0.1 & 
+           avg_log2FC > 0.5) %>%
+  mutate(feature = rownames(.),
+         feature_updated = updateGenes(feature, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval)
+
+saveRDS(tostiadult_pancreas_ec_markers_filt, file = '../objects/tostiadult_pancreas_ec_markers_filtered.rds')
+
+tostiadult_pancreas_ec_markers_filt_xl <- tostiadult_pancreas_ec_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(tostiadult_pancreas_ec_markers_filt_xl, path = '../results/Table-S3_3.xlsx')
+
+tostiadult_pancreas_ec_markers_genes <- tostiadult_pancreas_ec_markers_filt$feature_updated
+
+tostineonatal_pancreas_ec_markers <- FindMarkers(tostineonatal_pancreas, 
+                                ident.1 = c("Endothelial"),
+                                ident.2 = c("B", "Acinar-i", "Acinar-s", "Ductal", "Alpha", "Beta", "Delta", "T", "Macrophage", "Schwann", "Epsilon"))
+
+saveRDS(tostineonatal_pancreas_ec_markers, file = '../objects/tostineonatal_pancreas_ec_markers.rds')
+
+tostineonatal_pancreas_ec_markers_filt <- tostineonatal_pancreas_ec_markers %>%
+  filter(p_val_adj < 0.05 & 
+           pct.1 > 0.1 & 
+           avg_log2FC > 0.5) %>%
+  mutate(feature = rownames(.),
+         feature_updated = updateGenes(feature, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval)
+
+saveRDS(tostineonatal_pancreas_ec_markers_filt, file = '../objects/tostineonatal_pancreas_ec_markers_filtered.rds')
+
+tostineonatal_pancreas_ec_markers_filt_xl <- tostineonatal_pancreas_ec_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(tostineonatal_pancreas_ec_markers_filt_xl, path = '../results/Table-S3_4.xlsx')
+
+tostineonatal_pancreas_ec_markers_genes <- tostineonatal_pancreas_ec_markers_filt$feature_updated
+
+
+# Overlap of all Endothelial Genes
+venn_list <- list("Descartes" = descartes_pancreas_ec_markers_genes,
+                  "TabulaMuris" = tabulamuris_pancreas_ec_markers_genes,
+                  "Tosti-Adult" = tostiadult_pancreas_ec_markers_genes,
+                  "Tosti-neonatal" = tostineonatal_pancreas_ec_markers_genes)
+
+
+venn <- ggvenn(
+  venn_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, 
+  set_name_size = 1,
+  show_percentage = F, text_size = 4, 
+  )
+
+ggsave(venn, filename = '../figures/venn_all_endothelial_genes.svg', width = 3, height = 3)
+
+endothelial_genes <- unique(as.vector(unlist(venn_list)))
+
+saveRDS(endothelial_genes, file = '../objects/endothelial_genes.rds')
+```
+
+# Get pancreas markers from EC atlases
+```{r}
+descartes_ecatlas_pancreas_markers <- FindMarkers(descartes_ecatlas, 
+                                ident.1 = c("Pancreas"))
+
+saveRDS(descartes_ecatlas_pancreas_markers, file = '../objects/descartes_ecatlas_pancreas_markers.rds')
+
+descartes_ecatlas_pancreas_markers_xl <- descartes_ecatlas_pancreas_markers %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "Percent Expression in Pancreas ECs", "Percent Expression in other ECs", "Bonferroni-adjusted P value")) %>%
+  mutate(Gene = rownames(.))
+
+writexl::write_xlsx(descartes_ecatlas_pancreas_markers_xl, path = '../results/Table-S1.xlsx')
+
+descartes_ecatlas_pancreas_markers_filt <- descartes_ecatlas_pancreas_markers %>%
+  filter(pct.1 > 0.1 &
+           avg_log2FC > 0.25 &
+           p_val_adj < 0.05) %>%
+  mutate(feature = rownames(.),
+         feature_updated = updateGenes(feature, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval) %>%
+  filter(feature_updated %in% endothelial_genes) %>%
+  arrange(desc(log2FC.neglogpval))
+
+
+
+saveRDS(descartes_ecatlas_pancreas_markers_filt, file = '../objects/descartes_ecatlas_pancreas_markers_filtered.rds')
+
+descartes_ecatlas_pancreas_markers_genes <- descartes_ecatlas_pancreas_markers %>%
+  filter(pct.1 > 0.1 & 
+           avg_log2FC > 0.25 &
+           p_val_adj < 0.05) %>%
+  mutate(feature = rownames(.),
+       feature_updated = updateGenes(feature, db = hgnc)) %>%
+  pull(feature_updated)
+
+descartes_ecatlas_pancreas_markers_filt_xl <- descartes_ecatlas_pancreas_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(descartes_ecatlas_pancreas_markers_filt, path = '../results/Table-S4.xlsx')
+
+tabulamuris_ecatlas_pancreas_markers <- FindMarkers(tabulamuris_ecatlas, 
+                                ident.1 = c("Pancreas"))
+
+saveRDS(tabulamuris_ecatlas_pancreas_markers, file = '../objects/tabulamuris_ecatlas_pancreas_markers.rds')
+
+tabulamuris_ecatlas_pancreas_markers_xl <- tabulamuris_ecatlas_pancreas_markers %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "Percent Expression in Pancreas ECs", "Percent Expression in other ECs", "Bonferroni-adjusted P value")) %>%
+  mutate(Gene = rownames(.))
+
+writexl::write_xlsx(tabulamuris_ecatlas_pancreas_markers_xl, path = '../results/Table-S2.xlsx')
+
+tabulamuris_ecatlas_pancreas_markers_filt <- tabulamuris_ecatlas_pancreas_markers %>%
+  filter(pct.1 > 0.1 & 
+           avg_log2FC > 0.25 &
+           p_val_adj < 0.05) %>%
+  mutate(feature = rownames(.),
+         feature_human = convertGenes(feature, convert_to = 'human'),
+         feature_updated = updateGenes(feature_human, db = hgnc),
+         pct.diff = pct.1 - pct.2,
+         norm.pct.diff = pct.1/pct.1 - pct.2/pct.1,
+         neglogpval = -log(p_val_adj),
+         neglogpval = ifelse(is.infinite(neglogpval), 
+                             max(-log(.$p_val_adj)[!is.infinite(-log(.$p_val_adj))]), 
+                             neglogpval),
+         log2FC.neglogpval = avg_log2FC*neglogpval) %>%
+  filter(feature_updated %in% endothelial_genes) %>%
+  arrange(desc(log2FC.neglogpval))
+
+saveRDS(tabulamuris_ecatlas_pancreas_markers_filt, file = '../objects/tabulamuris_ecatlas_pancreas_markers_filtered.rds')
+
+tabulamuris_ecatlas_pancreas_markers_filt_xl <- tabulamuris_ecatlas_pancreas_markers_filt %>%
+  rename_all(~ c("P value", "Average log2FoldChange", "% Expression in ECs", "% Expression in other other cell types", "Bonferroni-adjusted P value", "Previous Gene", "Human Homologue", "Updated Gene", "% Expression Difference", "Normalized % Expression Difference", "-Log(adjusted p value)", "Average log2FoldChange X -Log(adjusted p value)"))
+
+writexl::write_xlsx(tabulamuris_ecatlas_pancreas_markers_filt_xl, path = '../results/Table-S5.xlsx')
+
+
+tabulamuris_ecatlas_pancreas_markers_genes <- tabulamuris_ecatlas_pancreas_markers %>%
+  filter(pct.1 > 0.1 & 
+           avg_log2FC > 0.25 &
+           p_val_adj < 0.05) %>%
+  mutate(feature = rownames(.),
+         feature_human = convertGenes(feature, convert_to = 'human'),
+         feature_updated = updateGenes(feature_human, db = hgnc)) %>%
+  pull(feature_updated)
+
+# Overlap of all Endothelial Genes
+venn_list <- list("Descartes" = descartes_ecatlas_pancreas_markers_genes,
+                  "TabulaMuris" = tabulamuris_ecatlas_pancreas_markers_genes,
+                  "EndothelialGenes" = endothelial_genes)
+venn <- ggvenn(
+  venn_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF"),
+  stroke_size = 0.5, 
+  set_name_size = 1,
+  show_percentage = F, text_size = 4, 
+  )
+
+ggsave(venn, filename = '../figures/venn_signature_genes.svg', width = 3, height = 3)
+
+signature_genes <- Reduce(intersect, venn_list)
+
+saveRDS(signature_genes, file = '../objects/signature_genes.rds')
+```
+
+# Tabula Muris EC atlas summary
+```{r}
+# Input variables
+object <- tabulamuris_ecatlas
+markers <- tabulamuris_ecatlas_pancreas_markers
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+  
+  
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/tabulamuris_ecatlas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Descartes EC atlas summary
+```{r}
+# Load data
+object <- descartes_ecatlas
+markers <- descartes_ecatlas_pancreas_markers
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+  
+  
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/descartes_ecatlas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Tabula Muris pancreas summary
+```{r}
+# Input variables
+object <- tabulamuris_pancreas
+markers <- tabulamuris_pancreas_ec_markers
+meta <- "cell_type"
+cluster <- "Endothelial"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+  
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/tabulamuris_pancreas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Descartes pancreas summary
+```{r}
+# Input variables
+object <- descartes_pancreas
+markers <- descartes_pancreas_ec_markers
+meta <- "cell_type"
+cluster <- "Endothelial"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+  
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/descartes_pancreas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Tosti Neonatal pancreas summary
+```{r}
+# Input variables
+object <- tostineonatal_pancreas
+markers <- tostineonatal_pancreas_ec_markers
+meta <- "cell_type"
+cluster <- "Endothelial"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+  
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/tostineonatal_pancreas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Tosti Adult pancreas summary
+```{r}
+# Input variables
+object <- tostiadult_pancreas
+markers <- tostiadult_pancreas_ec_markers
+meta <- "cell_type"
+cluster <- "Endothelial"
+pval_cutoff <- 0.05
+logfc_cutoff <- 0.25
+label_n <- 5
+
+# Preprocess data
+# Get metadata from object and convert to data frame and order by frequency
+data <- object@meta.data %>%
+  rename("clusters" = !!sym(meta)) %>% # !!sym to rlang
+  group_by(clusters) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  mutate(percent = 100*n/sum(n),
+         x = "x") %>%
+  arrange(desc(percent)) %>%
+  arrange(clusters != cluster) %>% #Clever hack to reorder
+  mutate(cols = do_ColorPalette("steelblue", nrow(.)))
+
+
+# Change factor levels of active ident
+my_levels <- data$clusters
+object <- SetIdent(object, value = meta)
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+# Make relevant 
+markers <- markers %>%
+  mutate(feature = rownames(.),
+    neglogpval = -log(p_val_adj),
+    color = ifelse(avg_log2FC > logfc_cutoff & p_val_adj < pval_cutoff, "yes", "no"),
+    label = ifelse(rank(-avg_log2FC) <= label_n & p_val_adj < pval_cutoff, feature, NA))
+  
+max_notinf <- max(markers$neglogpval[!is.infinite(markers$neglogpval)])
+
+markers <- markers %>%
+  mutate(neglogpval = ifelse(is.infinite(neglogpval), max_notinf, neglogpval))
+
+# DimPlot of object
+colors <- data$cols
+names(colors) <- data$clusters
+cluster_n <- length(unique(data$clusters))
+leg_nrow <- ceiling(cluster_n/3)
+
+dPlot <- do_DimPlot(object,
+                    pt.size = 0.5,
+                    legend.icon.size = 2.5,
+                    font.size = 10, 
+                    colors.use = colors, 
+                    legend.ncol = 3, 
+                    legend.nrow = leg_nrow)
+
+# Percentage stacked bar chart showing population percentages
+
+bPlot <- ggplot(data, 
+                aes(fill=factor(clusters, levels = clusters), # rearrange
+                          y=percent,
+                          x=x)) + 
+  ylab("Celltype Ratios") +
+  geom_bar(position="fill", stat="identity", color = 'black') + 
+  scale_fill_manual(values = data$cols) + 
+  labs(fill = "Cluster") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_text(size=8, face="bold"),
+        axis.text.y = element_text(size = 8, face = "bold", colour = 'black'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+# Volcano plot of DE genes
+
+vPlot <- ggplot(data = markers,  
+                    aes(x = avg_log2FC, 
+                        y = neglogpval,
+                        color = color,
+                        label = label), 
+                    show.legend = F) +
+  geom_point(size = 1*1.5,
+                      color = 'black') +
+  geom_point(size = 1) + 
+  scale_color_manual(values = c("yes" = "#B44656", "no" = "steelblue")) +
+  geom_hline(yintercept=c(-log(0.05)), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_vline(xintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) + 
+  geom_label_repel(fill="white", 
+                   color = 'black', 
+                   max.overlaps = Inf, 
+                   show.legend = F,
+                   segment.linetype = 3,
+                   segment.size = 1,
+                   fontface = "bold",
+                   size =2.5) +
+  theme_classic() +  
+  labs( x = "Average log2FC",
+        y = "-Log(-adj. p-value)") + 
+  theme(axis.text=element_text(size=8, face = 'bold'),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'none')
+
+
+# Use plot_grid to combine all plots
+p <- plot_grid(dPlot, bPlot, vPlot, nrow=1, ncol=3, rel_widths = c(3,1,3))
+
+ggsave(p, 
+       filename = "../figures/tostiadult_pancreas_umap_bar_volcano.png", 
+       width = 8, 
+       height = 4)
+```
+
+# Signature Gene Assessment Tabula Muris EC atlas
+```{r}
+# TabulaMuris_ecatlas
+object <- tabulamuris_ecatlas
+species <- 'mouse'
+signature_genes <- signature_genes
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+markers <- tabulamuris_ecatlas_pancreas_markers_filt
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/tabulamuris_ecatlas_signature_score.svg", width = 3, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+genes <- markers %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature)
+  
+  
+# Hiearchical clustering:
+p <- DotPlot(object, features = present_genes)
+
+data <- p$data %>% 
+  mutate(weighted.avg.exp.scaled = avg.exp.scaled*pct.exp/100) %>%
+  select(-pct.exp, -avg.exp, - avg.exp.scaled)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = weighted.avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+data <- data[,-1]
+
+mat <- as.matrix(data)
+
+clust <- hclust(dist(mat)) # hclust with distance matrix
+
+my_levels <- sub("[.]", " ", clust$labels[clust$order])
+
+ # create dendrogram
+ggtree_plot <- ggtree::ggtree(clust)
+
+# Relevel 
+object <- SetIdent(object, value = meta)
+
+# For ordering by score: object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+# For hierarchical clustering: 
+
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 5.5) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,2), align = 'h')
+
+  ggsave(plot, width = 8, height = 3.5, filename = "../figures/tabulamuris_ecatlas_signature_genes_dotplot.svg")
+```
+
+# Signature Gene Assessment Descartes EC atlas
+```{r}
+object <- descartes_ecatlas
+species <- 'human'
+signature_genes <- signature_genes
+meta <- "organ_tissue"
+cluster <- "Pancreas"
+markers <- descartes_ecatlas_pancreas_markers_filt
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/descartes_ecatlas_signature_score.svg", width = 3, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+genes <- markers %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature)
+
+# Hiearchical clustering:
+p <- DotPlot(object, features = present_genes)
+
+data <- p$data %>% 
+  mutate(weighted.avg.exp.scaled = avg.exp.scaled*pct.exp/100) %>%
+  select(-pct.exp, -avg.exp, - avg.exp.scaled)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = weighted.avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+data <- data[,-1]
+
+mat <- as.matrix(data)
+
+clust <- hclust(dist(mat)) # hclust with distance matrix
+
+my_levels <- sub("[.]", " ", clust$labels[clust$order])
+
+ # create dendrogram
+ggtree_plot <- ggtree::ggtree(clust)
+
+# Relevel 
+object <- SetIdent(object, value = meta)
+
+# For ordering by score: object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+# For hierarchical clustering: 
+
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 5.5) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,2), align = 'h')
+
+  ggsave(plot, width = 8, height = 3.5, filename = "../figures/descartes_ecatlas_signature_genes_dotplot.svg")
+```
+
+# Signature Gene Assessment Descartes Pancreas
+```{r}
+object <- descartes_pancreas
+species <- 'human'
+signature_genes <- signature_genes
+meta <- "cell_type"
+cluster <- "Endothelial"
+markers <- descartes_pancreas_ec_markers_filt
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/descartes_pancreas_signature_score.svg", width = 4, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+genes <- markers %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature)
+
+# Hiearchical clustering:
+p <- DotPlot(object, features = present_genes)
+
+data <- p$data %>% 
+  mutate(weighted.avg.exp.scaled = avg.exp.scaled*pct.exp/100) %>%
+  select(-pct.exp, -avg.exp, - avg.exp.scaled)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = weighted.avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+data <- data[,-1]
+
+mat <- as.matrix(data)
+
+clust <- hclust(dist(mat)) # hclust with distance matrix
+
+my_levels <- sub("[.]", " ", clust$labels[clust$order])
+
+ # create dendrogram
+ggtree_plot <- ggtree::ggtree(clust)
+
+# Relevel 
+object <- SetIdent(object, value = meta)
+
+# For ordering by score: object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+# For hierarchical clustering: 
+
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 5.5) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,2), align = 'h')
+
+  ggsave(plot, width = 8, height = 3.5, filename = "../figures/descartes_pancreas_signature_genes_dotplot.svg")
+```
+
+# Signature Gene Assessment Tabula Muris Pancreas
+```{r}
+object <- tabulamuris_pancreas
+species <- 'mouse'
+signature_genes <- signature_genes
+meta <- "cell_type"
+cluster <- "Endothelial"
+markers <- tabulamuris_pancreas_ec_markers_filt
+
+object_genes <- rownames(object)
+
+if (species == 'mouse') {
+  
+  object_genes_H <- convertGenes(object_genes,
+                                 convert_to = 'human')
+  object_genes_upd <- updateGenes(object_genes_H,
+                                  db = hgnc)
+} else if (species == 'human') {
+  
+  object_genes_upd <- updateGenes(object_genes,
+                                  db = hgnc)
+}
+
+present_ind <- as.vector(na.omit(match(signature_genes, 
+                                       object_genes_upd)))
+
+present_genes <- object_genes[present_ind]
+
+
+object <- AddModuleScore(object, features = list(present_genes), name = 'signature_score')
+
+vPlot <- VlnDotPlot(object, 
+                feature = 'signature_score1', 
+                group = meta,
+                y_name = 'Pancreas EC encirhed signature score',
+                order = T)
+
+ggsave(vPlot, filename = "../figures/tabulamuris_pancreas_signature_score.svg", width = 4, height = 4)
+
+data <- FetchData(object, vars = c('signature_score1', meta)) %>%
+    rename_all(~ c('feature', 'group'))
+
+data_means <- data %>%
+  group_by(group) %>%
+  dplyr::summarise(mean_feature = mean(feature))
+
+group_order <- data_means %>%
+  arrange(mean_feature) %>%
+  pull(group)
+
+genes <- markers %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(desc(log2FC.neglogpval)) %>%
+  pull(feature)
+
+# Hiearchical clustering:
+p <- DotPlot(object, features = present_genes)
+
+data <- p$data %>% 
+  mutate(weighted.avg.exp.scaled = avg.exp.scaled*pct.exp/100) %>%
+  select(-pct.exp, -avg.exp, - avg.exp.scaled)%>%  # drop unused columns to faciliate widening
+  pivot_wider(names_from = features.plot, values_from = weighted.avg.exp.scaled) %>%
+  as.data.frame(.)
+
+rownames(data) <- as.vector(data[,1])
+
+data <- data[,-1]
+
+mat <- as.matrix(data)
+
+clust <- hclust(dist(mat)) # hclust with distance matrix
+
+my_levels <- sub("[.]", " ", clust$labels[clust$order])
+
+ # create dendrogram
+ggtree_plot <- ggtree::ggtree(clust)
+
+# Relevel 
+object <- SetIdent(object, value = meta)
+
+# For ordering by score: object@active.ident<- factor(x = object@active.ident, levels = rev(group_order))
+
+# For hierarchical clustering: 
+
+object@active.ident<- factor(x = object@active.ident, levels = my_levels)
+
+dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 5.5) + 
+           scale_color_gradient2(low = 'blue3', high = 'red3', mid = 'white', midpoint = 0, 
+                                 guide = guide_colorbar(
+                                                     frame.colour = "black",
+                                                     ticks.colour = "black",
+                                                     title = 'Avg. Exp'
+                                                     )) +
+  theme_classic() +
+  theme( plot.title = element_blank(),
+           axis.title.y = element_blank(),
+           axis.title.x = element_blank(),
+           axis.text.x = element_text(size =8,face = "bold", colour = "black", vjust = 1, hjust= 1, angle = 90),
+           axis.text.y = element_text(size =8,face = "bold", colour = "black"),
+         legend.text = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5),
+         legend.title = element_text(size =8, angle = 0, face = "bold", colour = "black", vjust = 0.5), 
+         legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm'),
+         legend.position = 'right')
+
+plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,2), align = 'h')
+
+  ggsave(plot, width = 8, height = 3.5, filename = "../figures/tabulamuris_pancreas_signature_genes_dotplot.svg")
+```
+
+# Log2FC graph Descartes EC atlas vs Tabula Muris EC atlas
+```{r}
+# Cutoff
+cutoff_circle <- function(x, y, d) {
+  distance_from_origin <- sqrt(x^2 + y^2)
+  return(distance_from_origin > d)
+}
+
+# TabulaMuris_ecatlas
+signature_genes <- signature_genes
+markers1 <- tabulamuris_ecatlas_pancreas_markers_filt
+markers2 <- descartes_ecatlas_pancreas_markers_filt
+
+markers1_signature <- markers1 %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(match(feature_updated, signature_genes)) %>%
+  select(feature_updated, avg_log2FC, norm.pct.diff)%>%
+  rename_all(~ c('feature', 'log2FC_1', 'pct_1'))
+
+markers2_signature <- markers2 %>%
+  filter(feature_updated %in% signature_genes) %>%
+  arrange(match(feature_updated, signature_genes))%>%
+  select(feature_updated, avg_log2FC, norm.pct.diff)%>%
+  rename_all(~ c('feature', 'log2FC_2', 'pct_2')) 
+
+markers_merged <- left_join(markers1_signature, 
+                            markers2_signature) %>%
+  mutate(label = ifelse(cutoff_circle(log2FC_1,
+                                      log2FC_2,
+                                      1.7), feature, NA))
+
+# Sig  plot
+size_min <- plyr::round_any(min(markers_merged$pct_2), 0.5, f = floor)
+size_max <- plyr::round_any(max(markers_merged$pct_2), 0.5, f = ceiling)
+size_breaks <- seq(size_min, size_max, length.out = 5)[-1]
+
+
+sig_plot <- ggplot(data = markers_merged,
+                   aes(x = log2FC_1,
+                       y = log2FC_2,
+                       color = pct_1,
+                       label = label),
+                   show.legend = F) +
+  scale_color_viridis_c(option = 'B',
+                        direction = -1,
+                        n.breaks = 5) +
+  geom_point(alpha = 1,
+             aes(size = pct_2)) +
+  geom_label_repel(aes(point.size = pct_2),  
+                   point.padding = 0,
+                   max.overlaps = Inf,
+                   show.legend = F,
+                   size = 3,
+                   box.padding = 0.5,
+                   min.segment.length = 0,
+                   fill = "white",  # Set label background color to black
+                   color = "black",  # Set label text color to black
+                   segment.color = "red",
+                   fontface = "bold") +
+  scale_size_continuous(range = c(-3, 7), 
+                        limits = c(size_min,
+                                   size_max),
+                        breaks = size_breaks) +
+  theme_classic() +
+  ylab("Average Log2FC Human Fetal EC Atlas") +
+  xlab("Average Log2FC Adult Mouse EC Atlas") +
+  theme(axis.text=element_text(size=8),
+        axis.title.x = element_text(size=8, face="bold"),
+        axis.title.y = element_text(size=8, face="bold"),
+        legend.title = element_text(size=8, face = "bold"),
+        legend.text = element_text(size=8),
+        legend.position = 'right',
+        legend.direction = 'vertical',
+        legend.key.width = unit(0.5, 'cm'),
+         legend.key.height = unit(0.3, 'cm')) +
+  guides(
+    color = guide_colorbar(title = "Adult Mouse\nNorm. % Diff"),
+    size = guide_legend(title = "Human Fetal\nNorm. % Diff"))
+
+
+ggsave(sig_plot, filename = "../figures/descartes_tabulamuris_log2FC_plot_signature_genes.svg",
+       width = 4.5,
+       height = 3.5)
+```
+
+# Contamination plot Descartes EC atlas
+```{r}
+endothelial_genes <- endothelial_genes
+signature_genes <- signature_genes
+markers <- descartes_ecatlas_pancreas_markers
+
+
+data <- markers %>%
+  filter(avg_log2FC > 0 &
+           p_val_adj < 0.05 &
+           pct.1  > 0.1 ) %>%
+  mutate(feature = rownames(.),
+         legend = ifelse(feature %in% endothelial_genes, "Other EC genes", "Potential Contamination"),
+         legend = ifelse(feature %in% signature_genes, "Pancreas-EC enriched gene", legend)) %>%
+  group_by(legend) %>%
+  arrange(desc(avg_log2FC)) %>%
+  mutate(named = ifelse(row_number() <= 5, feature, NA))
+  
+
+col.font <- c("Other EC genes" = 'darkgreen',
+           "Potential Contamination" = '#E31A1CFF',
+           "Pancreas-EC enriched gene" = 'blue')
+
+col.box <- c("White", "White", "White")
+
+scPlot_desc <- ggplot(data = data,
+                     aes(y = avg_log2FC,
+                         x = pct.1*100),
+                     show.legend = F) +
+  geom_point(size = 1 * 1.5,
+             color = 'black') +
+  geom_point(data = data, 
+             aes(y = avg_log2FC, 
+                 x =  pct.1*100, 
+                 color = legend),
+             size =1) + 
+  xlim(0,130) + 
+  scale_color_manual(values = col.font) +
+  geom_hline(yintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_label_repel(data = data, 
+                   aes(label = named, fill=legend, color = legend), 
+                   max.overlaps = Inf, 
+                   show.legend = F, 
+                   xlim  = c(105,NA), 
+                   force_pull   = 0, 
+                   hjust = 0, 
+                   direction = "y", 
+                   segment.linetype = 7,
+                   segment.size = 0.5,
+                   fontface = "bold",
+                   size =2.7) +
+    scale_fill_manual(values = col.box) + 
+  scale_color_manual(values = col.font) +
+    theme_classic() +  
+    ylab("Average log2FC") + 
+    xlab("Percentage of cells expressing gene") + 
+    theme(axis.text=element_text(size=8),
+          axis.title.x = element_text(size=8, face="bold"),
+          axis.title.y = element_text(size=8, face="bold"),
+          legend.title = element_text(size=8, face = "bold"),
+          legend.text = element_text(size=8),
+          legend.position = 'bottom',
+          legend.direction = 'vertical') +
+  guides(colour = guide_legend(override.aes = list(size=2)))
+
+ggsave(scPlot_desc, filename = '../figures/contamination_plot_descartes_ecatlas.svg', height = 4.5, width = 3)
+```
+
+# Contamination plot TabulaMuris EC atlas
+```{r}
+endothelial_genes <- endothelial_genes
+signature_genes <- signature_genes
+markers <- tabulamuris_ecatlas_pancreas_markers
+
+genes <- rownames(tabulamuris_ecatlas_pancreas_markers)
+genes_H <- convertGenes(genes,
+                        convert_to = 'human')
+genes_H_upd <- updateGenes(genes_H,
+                           db = hgnc)
+
+markers$feature_update <- genes_H_upd
+
+
+data <- markers %>%
+  filter(avg_log2FC > 0 &
+           p_val_adj < 0.05 &
+           pct.1  > 0.1 ) %>%
+  mutate(feature = rownames(.),
+         legend = ifelse(feature_update %in% endothelial_genes, "Other EC genes", "Potential Contamination"),
+         legend = ifelse(feature_update %in% signature_genes, "Pancreas-EC enriched gene", legend)) %>%
+  group_by(legend) %>%
+  arrange(desc(avg_log2FC)) %>%
+  mutate(named = ifelse(row_number() <= 5, feature, NA))
+  
+
+col.font <- c("Other EC genes" = 'darkgreen',
+           "Potential Contamination" = '#E31A1CFF',
+           "Pancreas-EC enriched gene" = 'blue')
+
+col.box <- c("White", "White", "White")
+
+scPlot_desc <- ggplot(data = data,
+                     aes(y = avg_log2FC,
+                         x = pct.1*100),
+                     show.legend = F) +
+  geom_point(size = 1 * 1.5,
+             color = 'black') +
+  geom_point(data = data, 
+             aes(y = avg_log2FC, 
+                 x =  pct.1*100, 
+                 color = legend),
+             size =1) + 
+  xlim(0,130) + 
+  scale_color_manual(values = col.font) +
+  geom_hline(yintercept=c(0.25), 
+             col="black", 
+             linetype="dotted", 
+             size = 1) +
+  geom_label_repel(data = data, 
+                   aes(label = named, fill=legend, color = legend), 
+                   max.overlaps = Inf, 
+                   show.legend = F, 
+                   xlim  = c(105,NA), 
+                   force_pull   = 0, 
+                   hjust = 0, 
+                   direction = "y", 
+                   segment.linetype = 7,
+                   segment.size = 0.5,
+                   fontface = "bold",
+                   size =2.7) +
+    scale_fill_manual(values = col.box) + 
+  scale_color_manual(values = col.font) +
+    theme_classic() +  
+    ylab("Average log2FC") + 
+    xlab("Percentage of cells expressing gene") + 
+    theme(axis.text=element_text(size=8),
+          axis.title.x = element_text(size=8, face="bold"),
+          axis.title.y = element_text(size=8, face="bold"),
+          legend.title = element_text(size=8, face = "bold"),
+          legend.text = element_text(size=8),
+          legend.position = 'bottom',
+          legend.direction = 'vertical') +
+  guides(colour = guide_legend(override.aes = list(size=2)))
+
+ggsave(scPlot_desc, filename = '../figures/contamination_plot_tabulamuris_ecatlas.svg', height = 4.5, width = 3)
+```
