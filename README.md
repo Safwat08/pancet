@@ -1,4 +1,4 @@
-# pancet
+# Pancet
 ## PANC-reatic E-ndothelial T-ranscriptomic Profile 
 
 This repository runs all codes for the following publication:
