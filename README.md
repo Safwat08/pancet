@@ -1,6 +1,8 @@
 # Pancet
 ## PANC-reatic E-ndothelial T-ranscriptomic Profile 
 
+<img width="229" alt="image" src="https://github.com/Safwat08/pancet/assets/55861735/254d5675-9837-4d11-b1f8-57e958a5ad8c">
+
 This repository runs all codes for the following publication:
 https://www.biorxiv.org/content/10.1101/2023.04.19.537540v1
 
