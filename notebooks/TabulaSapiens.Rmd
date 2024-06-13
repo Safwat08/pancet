@@ -34,6 +34,40 @@ tabulamuris_ecatlas_pancreas_markers_filt <- readRDS('../objects/tabulamuris_eca
 descartes_ecatlas_pancreas_markers_filt <- readRDS('../objects/descartes_ecatlas_pancreas_markers_filtered.rds')
 ```
 
+## Decontx benchmark
+```{r}
+# library
+library(decontX)
+
+# Benchmark decontamination using decontx
+# Step1. Generate EC atlas with decontx counts
+object <- tabulasapiens_ecatlas
+
+# Get counts
+counts <- GetAssayData(object, slot = 'counts')
+
+# Get metadata
+meta <- object@meta.data
+
+# Get decontx counts 
+counts <- decontX(counts)
+counts <- counts$decontXcounts
+
+# Create new object
+object <- CreateSeuratObject(counts = counts, meta.data = meta)
+
+# Save previous object
+object2 <- tabulasapiens_ecatlas
+
+# Normalize
+object <- NormalizeData(object)
+
+object <- SetIdent(object, value = 'organ_tissue')
+
+# Make into new tabulasapiens_ecatlas
+tabulasapiens_ecatlas <- object
+```
+
 ## Pancreas Markers
 ```{r}
 tabulasapiens_ecatlas_pancreas_markers <- FindMarkers(tabulasapiens_ecatlas, 
