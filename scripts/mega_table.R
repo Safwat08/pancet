@@ -21,23 +21,17 @@ tm <- tm %>%
 
 tm <- tm %>%
   rename(Features = "feature_updated",
-         average.log2fc = "avg_log2FC",
-         percent.exp.pancreas.ecs = "pct.1",
-         percent.exp.difference = "pct.diff",
-         normalized.percent.exp.difference = "norm.pct.diff",
-         neg.log.adjusted.p.value = "neglogpval",
-         neg.log.unadjustd.p.palue = "neglogunadjpval",
-         log2fc.x.neg.log.adjusted.p.value = "log2FC.neglogpval",
-         log2fc.x.neg.log.unadjusted.p.value = "log2FC.neglogunadjpval") %>%
+         Log2FC = "avg_log2FC",
+         PercentExp = "pct.1",
+         NormPercentExp_Diff = "norm.pct.diff",
+         NegLogPvalue = "neglogpval",
+         Log2FC.NegLogPvalue = "log2FC.neglogpval",) %>%
   select(Features,
-         average.log2fc,
-         percent.exp.pancreas.ecs,
-         percent.exp.difference,
-         normalized.percent.exp.difference,
-         neg.log.adjusted.p.value,
-         neg.log.unadjustd.p.palue,
-         log2fc.x.neg.log.adjusted.p.value,
-         log2fc.x.neg.log.unadjusted.p.value)
+         Log2FC,
+         PercentExp,
+         NormPercentExp_Diff,
+         NegLogPvalue,
+         Log2FC.NegLogPvalue)
 
 colnames(tm) <- paste0("TabulaMuris.",colnames(tm))
 
