@@ -6,6 +6,9 @@ title: "Tabula Sapiens Analysis"
 ```{r}
 # Source utilities
 source('../scripts/utilities.R')
+
+# set.seed
+set.seed(42)
 ```
 
 ## Load data
@@ -317,61 +320,15 @@ group_order <- data_means %>%
   pull(group)
 
 object <- ScaleData(object, assay = 'LOG', features = present_genes)
-object <- RunPCA(object, assay = 'LOG', features = c(signature_genes))
+object <- RunPCA(object, assay = 'LOG', features = c(present_genes))
 object <- FindNeighbors(object, reduction = 'pca', dims = 1:30)
 object <- FindClusters(object, resolution = 0.2)
-object <- RunVarimaxPCA(object, features = c(signature_genes), reduction = 'pca', norm = 'LOG', ncomp = 30, scaleby_sdev = F)
+object <- RunVarimaxPCA(object, features = c(present_genes), reduction = 'pca', norm = 'LOG', ncomp = 30, scaleby_sdev = F)
 
 clusters <- unique(object@meta.data[,"seurat_clusters"])
+
 coln <- length(clusters)
 leg_nrow <- coln/3
-
-data <- object@meta.data %>%
-  rename("clusters" = seurat_clusters) %>% # !!sym to rlang
-  group_by(clusters) %>%
-  summarise(n = n()) %>%
-  ungroup() %>%
-  mutate(percent = 100*n/sum(n),
-         x = "x") %>%
-  arrange(desc(percent)) %>%
-  arrange(clusters != '3') %>% #Clever hack to reorder
-  mutate(cols = do_ColorPalette("steelblue", coln))
-
-colors <- data %>%
-  pull(cols, clusters)
-
-colors['other'] <-'grey'
-
-pca_df <- object@reductions[['vpca']]@cell.embeddings %>%
-  as.data.frame %>%
-  cbind(FetchData(object, vars = c(meta, 'seurat_clusters'))) %>%
-  mutate(clusters = seurat_clusters,
-         clusters = ifelse(organ_tissue == 'Pancreas', clusters, 'other')) %>%
-  arrange(organ_tissue != 'Pancreas', desc(VPC_3))#Clever hack to reorder
-
-clusters <- unique(pca_df$clusters)
-
-colors <- do_ColorPalette("steelblue", length(clusters))
-
-names(colors) <- clusters
-
-colors['other'] <-'grey'
-
-p <- ggplot(pca_df, aes(x=VPC_1, y=VPC_3,  color= clusters)) +
-    geom_point(size = 1) +
-    scale_color_manual(values = colors) + 
-  theme_classic() +
-    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
-      axis.title=element_text(size = 8, face = "bold"),
-      axis.text = element_text(size = 8, face = "bold"),
-      legend.title = element_text(size=8, face = "bold"),
-      legend.text = element_text(size=8, vjust = 1, hjust = 1, face = "bold"))
-
-ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.png', 
-       width = 4, height = 4)
-
-ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.svg', 
-       width = 4, height = 3.5)
 
 data <- object@meta.data %>% 
   filter(organ_tissue == 'Pancreas') %>% 
@@ -382,8 +339,10 @@ data <- object@meta.data %>%
   mutate(percent = 100*n/sum(n),
          x = "x") %>%
   arrange(desc(percent)) %>%
-  arrange(clusters != '3') %>% #Clever hack to reorder
   mutate(cols = do_ColorPalette("steelblue", coln))
+
+colors_bp <- data %>%
+  pull(cols, clusters)
 
 bPlot <- ggplot(data, 
                 aes(fill=factor(clusters, levels = rev(clusters)), # rearrange
@@ -404,6 +363,49 @@ bPlot <- ggplot(data,
 
 ggsave(bPlot, filename = '../figures/tabulasapiens_vpca_barplot.svg', 
        width = 1, height = 3.5)
+
+pca_df <- FetchData(object, vars = c(meta, 'seurat_clusters', 'VPC_3', 'VPC_8')) %>%
+  mutate(clusters = factor(seurat_clusters, levels = as.numeric(names(colors_bp)))) %>%
+  mutate(colors = as.vector(colors_bp[match(.$seurat_clusters, data$clusters)]))
+
+colors_vp <- pca_df %>%
+  pull(colors, clusters)
+
+p <- ggplot(pca_df, aes(x=VPC_3, y=VPC_8, color = clusters)) +
+    geom_point(size = 1) +
+    scale_color_manual(values = colors_vp) + 
+  theme_classic() +
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+      axis.title=element_text(size = 8, face = "bold"),
+      axis.text = element_text(size = 8, face = "bold"),
+      legend.title = element_text(size=8, face = "bold"),
+      legend.text = element_text(size=8, vjust = 1, hjust = 1, face = "bold"))
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.png', 
+       width = 4, height = 4)
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot.svg', 
+       width = 4, height = 3.5)
+
+
+pca_df_panc <- pca_df %>% 
+  filter(organ_tissue == 'Pancreas')
+
+p <- ggplot(pca_df_panc, aes(x=VPC_3, y=VPC_8, color = clusters)) +
+    geom_point(size = 1) +
+    scale_color_manual(values = colors_vp) + 
+  theme_classic() +
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+      axis.title=element_text(size = 8, face = "bold"),
+      axis.text = element_text(size = 8, face = "bold"),
+      legend.title = element_text(size=8, face = "bold"),
+      legend.text = element_text(size=8, vjust = 1, hjust = 1, face = "bold"))
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot_pancreas.png', 
+       width = 4, height = 4)
+
+ggsave(p, filename = '../figures/tabulasapiens_vpca_plot_pancreas.svg', 
+       width = 4, height = 3.5)
 
 genes <- markers %>%
   filter(feature_updated %in% signature_genes) %>%
@@ -470,13 +472,10 @@ plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,1), align = '
 pca_df <- object@reductions[['vpca']]@feature.loadings %>%
   as.data.frame %>%
   mutate(genes = rownames(.),
-         label = ifelse(rank(VPC_3) <= 5 | 
-                          rank(-VPC_3) <= 5 | 
-                          rank(VPC_1) <= 5 |
-                          rank(-VPC_1) <= 5, genes, NA),
-         VPC_1 = -VPC_1)
+         label = ifelse(rank(-VPC_3) <= 5 | 
+                          rank(-VPC_8) <= 5, genes, NA))
 
-p <- ggplot(pca_df, aes(x=VPC_1, y=VPC_3, label = label)) +
+p <- ggplot(pca_df, aes(x=VPC_3, y=VPC_8, label = label)) +
     geom_point(size = 1, color = 'darkred') + 
 geom_label_repel(fill="white", 
                    color = 'black', 
@@ -487,8 +486,8 @@ geom_label_repel(fill="white",
                    fontface = "bold",
                    size =2.7) +
   theme_classic() +  
-  labs( x = "VPC 1",
-        y = "VPC 3") + 
+  labs( x = "VPC 3",
+        y = "VPC 8") + 
   theme(axis.text=element_text(size=8, face = 'bold'),
         axis.title.x = element_text(size=8, face="bold"),
         axis.title.y = element_text(size=8, face="bold"),
@@ -496,7 +495,7 @@ geom_label_repel(fill="white",
         legend.text = element_text(size=8),
         legend.position = 'none')
 
-ggsave(plot = p, filename = '../figures/tabulasapiens_ecatlas_signature_genes_vpcafeatures.png', width = 3.5, height = 3.5)
+ggsave(plot = p, filename = '../figures/tabulasapiens_ecatlas_signature_genes_vpcafeatures.svg', width = 3.5, height = 3.5)
 ```
 
 ## S1P genes DotPlot EC atlas
@@ -721,7 +720,11 @@ descartes_ecatlas_pancreas_markers_filt_genes <- descartes_ecatlas_pancreas_mark
 
 human_only_genes <- setdiff(intersect(tabulasapiens_ecatlas_pancreas_markers_filt_genes, descartes_ecatlas_pancreas_markers_filt_genes), tabulamuris_ecatlas_pancreas_markers_filt_genes)
 
+saveRDS(human_only_genes, file = '../objects/signature_genes_humanonly.rds')
+
 adult_only_genes <- setdiff(intersect(tabulasapiens_ecatlas_pancreas_markers_filt_genes, tabulamuris_ecatlas_pancreas_markers_filt_genes), descartes_ecatlas_pancreas_markers_filt_genes)
+
+saveRDS(adult_only_genes, file = '../objects/signature_genes_adultonly.rds')
 
 
 # Cutoff

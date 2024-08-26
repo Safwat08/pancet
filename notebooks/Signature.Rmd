@@ -1135,7 +1135,7 @@ dPlot <- DotPlot(object, features = c(genes[1:30]), dot.scale = 5.5) +
 
 plot <- plot_grid(ggtree_plot, dPlot, nrow = 1, rel_widths = c(0.1,2), align = 'h')
 
-  ggsave(plot, width = 8, height = 3.5, filename = "../figures/tabulamuris_ecatlas_signature_genes_dotplot.svg")
+ggsave(plot, width = 8, height = 3.5, filename = "../figures/tabulamuris_ecatlas_signature_genes_dotplot.svg")
 ```
 
 # Signature Gene Assessment Descartes EC atlas
