@@ -504,7 +504,6 @@ ggsave(grid, filename = "../figures/integrated_atlas_bulk_goi_dotplot.svg",
        height = 2)
 ```
 
-
 ## Signature Gene Assessment
 ```{r}
 # TabulaMuris_ecatlas

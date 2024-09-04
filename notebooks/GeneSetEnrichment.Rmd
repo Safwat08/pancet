@@ -10,10 +10,17 @@ source('../scripts/utilities.R')
 
 ## Load data
 ```{r}
+# Signature genes 
 signature_genes <- readRDS('../objects/signature_genes.rds')
+
+# Human only signature genes 
+human_signature_genes <- readRDS('../objects/signature_genes_humanonly.rds')
+
+# adult only signature genes 
+adult_signature_genes <- readRDS('../objects/signature_genes_adultonly.rds')
 ```
 
-## Enrichr
+## Enrichr for signature genes 
 ```{r}
 genes <- signature_genes
 
